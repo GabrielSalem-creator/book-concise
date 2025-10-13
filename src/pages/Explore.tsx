@@ -12,7 +12,7 @@ interface PublicSummary {
   id: string;
   content: string;
   created_at: string;
-  book: {
+  books: {
     id: string;
     title: string;
     author?: string;
@@ -37,8 +37,8 @@ const Explore = () => {
       setFilteredSummaries(summaries);
     } else {
       const filtered = summaries.filter(s =>
-        s.book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.book.author?.toLowerCase().includes(searchQuery.toLowerCase())
+        s.books.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.books.author?.toLowerCase().includes(searchQuery.toLowerCase())
       );
       setFilteredSummaries(filtered);
     }
@@ -193,11 +193,11 @@ const Explore = () => {
               >
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold mb-1 line-clamp-2">
-                    {summary.book.title}
+                    {summary.books.title}
                   </h3>
-                  {summary.book.author && (
+                  {summary.books.author && (
                     <p className="text-sm text-muted-foreground">
-                      by {summary.book.author}
+                      by {summary.books.author}
                     </p>
                   )}
                 </div>
@@ -215,7 +215,7 @@ const Explore = () => {
                       navigate(user ? '/dashboard' : '/landing', {
                         state: {
                           summary: summary.content,
-                          bookTitle: summary.book.title
+                          bookTitle: summary.books.title
                         }
                       });
                     }}
@@ -226,7 +226,7 @@ const Explore = () => {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleSaveToLibrary(summary.book.id, summary.book.title)}
+                    onClick={() => handleSaveToLibrary(summary.books.id, summary.books.title)}
                     className="hover:bg-primary hover:text-primary-foreground"
                   >
                     <BookmarkPlus className="w-4 h-4" />
