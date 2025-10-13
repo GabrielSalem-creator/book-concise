@@ -28,7 +28,7 @@ const Auth = () => {
     // Check if user is already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate("/");
+        navigate("/dashboard");
       }
     });
   }, [navigate]);
@@ -38,7 +38,7 @@ const Auth = () => {
       const validated = authSchema.parse({ email, password, fullName });
       setIsLoading(true);
 
-      const redirectUrl = `${window.location.origin}/`;
+      const redirectUrl = `${window.location.origin}/dashboard`;
       
       const { error } = await supabase.auth.signUp({
         email: validated.email,
@@ -122,7 +122,7 @@ const Auth = () => {
         description: "You've successfully signed in.",
       });
 
-      navigate("/");
+      navigate("/dashboard");
       
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -150,7 +150,7 @@ const Auth = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: `${window.location.origin}/dashboard`,
         }
       });
 

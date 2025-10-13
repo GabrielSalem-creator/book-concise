@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Volume2, VolumeX, BookmarkPlus, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/components/AuthProvider";
 
 interface SummaryDisplayProps {
   summary: string;
@@ -12,7 +14,22 @@ interface SummaryDisplayProps {
 export const SummaryDisplay = ({ summary, bookTitle }: SummaryDisplayProps) => {
   const [isReading, setIsReading] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
   const [utterance, setUtterance] = useState<SpeechSynthesisUtterance | null>(null);
+  const [cleanSummary, setCleanSummary] = useState("");
+
+  useEffect(() => {
+    // Clean the summary text by removing markdown symbols
+    const cleaned = summary
+      .replace(/#+\s/g, '') // Remove # headers
+      .replace(/[-*_]{2,}/g, '') // Remove --- or *** dividers
+      .replace(/^\s*[-*]\s/gm, '') // Remove bullet points
+      .replace(/\*\*/g, '') // Remove bold **
+      .replace(/__/g, '') // Remove underline __
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove markdown links but keep text
+      .trim();
+    setCleanSummary(cleaned);
+  }, [summary]);
 
   const handleTextToSpeech = () => {
     if (isReading && utterance) {
@@ -21,7 +38,7 @@ export const SummaryDisplay = ({ summary, bookTitle }: SummaryDisplayProps) => {
       return;
     }
 
-    const newUtterance = new SpeechSynthesisUtterance(summary);
+    const newUtterance = new SpeechSynthesisUtterance(cleanSummary);
     newUtterance.rate = 0.9;
     newUtterance.pitch = 1;
     newUtterance.volume = 1;
@@ -44,15 +61,68 @@ export const SummaryDisplay = ({ summary, bookTitle }: SummaryDisplayProps) => {
     setIsReading(true);
   };
 
-  const handleBookmark = () => {
-    toast({
-      title: "Bookmark added",
-      description: "Summary saved to your bookmarks",
-    });
+  const handleBookmark = async () => {
+    if (!user) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to save bookmarks",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Find the book first
+      const { data: book } = await supabase
+        .from('books')
+        .select('id')
+        .ilike('title', `%${bookTitle}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (!book) {
+        toast({
+          title: "Error",
+          description: "Book not found in database",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('bookmarks')
+        .insert({
+          user_id: user.id,
+          book_id: book.id,
+        });
+
+      if (error) {
+        if (error.code === '23505') {
+          toast({
+            title: "Already saved",
+            description: "This book is already in your library",
+          });
+          return;
+        }
+        throw error;
+      }
+
+      toast({
+        title: "Saved!",
+        description: "Book added to your library",
+      });
+    } catch (error) {
+      console.error('Error saving bookmark:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save bookmark",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleShare = () => {
-    navigator.clipboard.writeText(summary);
+    navigator.clipboard.writeText(cleanSummary);
     toast({
       title: "Copied!",
       description: "Summary copied to clipboard",
@@ -103,7 +173,7 @@ export const SummaryDisplay = ({ summary, bookTitle }: SummaryDisplayProps) => {
 
         <div className="prose prose-lg max-w-none dark:prose-invert">
           <div className="whitespace-pre-wrap leading-relaxed text-foreground/90">
-            {summary}
+            {cleanSummary}
           </div>
         </div>
       </div>

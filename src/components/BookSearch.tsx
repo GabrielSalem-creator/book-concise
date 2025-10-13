@@ -27,10 +27,45 @@ export const BookSearch = ({ onSummaryGenerated }: BookSearchProps) => {
     }
 
     setIsLoading(true);
-    setStatus("Searching for book PDFs...");
+    setStatus("Checking for existing summaries...");
 
     try {
-      // Step 1: Search for PDF URLs
+      // Step 1: Check if summary already exists
+      const { data: existingBook } = await supabase
+        .from('books')
+        .select(`
+          id,
+          title,
+          author,
+          summaries (
+            id,
+            content,
+            created_at
+          )
+        `)
+        .ilike('title', `%${bookName}%`)
+        .limit(1)
+        .maybeSingle();
+
+      // If we found an existing summary, use it
+      if (existingBook && existingBook.summaries && existingBook.summaries.length > 0) {
+        const latestSummary = existingBook.summaries[0];
+        
+        toast({
+          title: "Found existing summary!",
+          description: "Using previously generated summary",
+        });
+
+        onSummaryGenerated(latestSummary.content, existingBook.title);
+        setBookName("");
+        setStatus("");
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 2: No existing summary found, search for PDF URLs
+      setStatus("Searching for book PDFs...");
+      
       const { data: searchData, error: searchError } = await supabase.functions.invoke(
         'search-book-pdf',
         {
@@ -46,7 +81,7 @@ export const BookSearch = ({ onSummaryGenerated }: BookSearchProps) => {
       console.log(`Found ${searchData.pdfUrls.length} PDF URLs`);
       setStatus("Validating PDF...");
 
-      // Step 2: Validate first PDF
+      // Step 3: Validate first PDF
       const { data: pdfData, error: pdfError } = await supabase.functions.invoke(
         'extract-pdf-text',
         {
@@ -61,7 +96,7 @@ export const BookSearch = ({ onSummaryGenerated }: BookSearchProps) => {
 
       setStatus("Generating AI summary...");
 
-      // Step 3: Generate summary
+      // Step 4: Generate summary
       const { data: summaryData, error: summaryError } = await supabase.functions.invoke(
         'generate-summary',
         {
