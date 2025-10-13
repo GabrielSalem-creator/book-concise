@@ -130,10 +130,10 @@ export const SummaryDisplay = ({ summary, bookTitle }: SummaryDisplayProps) => {
   };
 
   return (
-    <Card className="p-8 bg-card/50 backdrop-blur-sm border-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+    <Card className="p-4 md:p-8 bg-card/50 backdrop-blur-sm border-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="space-y-4 md:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent line-clamp-2">
             {bookTitle}
           </h2>
           
@@ -142,12 +142,12 @@ export const SummaryDisplay = ({ summary, bookTitle }: SummaryDisplayProps) => {
               variant="outline"
               size="icon"
               onClick={handleTextToSpeech}
-              className="hover:bg-accent hover:text-accent-foreground transition-colors"
+              className="hover:bg-accent hover:text-accent-foreground transition-colors shrink-0"
             >
               {isReading ? (
-                <VolumeX className="w-5 h-5" />
+                <VolumeX className="w-4 h-4 md:w-5 md:h-5" />
               ) : (
-                <Volume2 className="w-5 h-5" />
+                <Volume2 className="w-4 h-4 md:w-5 md:h-5" />
               )}
             </Button>
             
@@ -155,24 +155,24 @@ export const SummaryDisplay = ({ summary, bookTitle }: SummaryDisplayProps) => {
               variant="outline"
               size="icon"
               onClick={handleBookmark}
-              className="hover:bg-primary hover:text-primary-foreground transition-colors"
+              className="hover:bg-primary hover:text-primary-foreground transition-colors shrink-0"
             >
-              <BookmarkPlus className="w-5 h-5" />
+              <BookmarkPlus className="w-4 h-4 md:w-5 md:h-5" />
             </Button>
             
             <Button
               variant="outline"
               size="icon"
               onClick={handleShare}
-              className="hover:bg-secondary hover:text-secondary-foreground transition-colors"
+              className="hover:bg-secondary hover:text-secondary-foreground transition-colors shrink-0"
             >
-              <Share2 className="w-5 h-5" />
+              <Share2 className="w-4 h-4 md:w-5 md:h-5" />
             </Button>
           </div>
         </div>
 
-        <div className="prose prose-lg max-w-none dark:prose-invert">
-          <div className="whitespace-pre-wrap leading-relaxed text-foreground/90">
+        <div className="prose prose-sm md:prose-lg max-w-none dark:prose-invert">
+          <div className="whitespace-pre-wrap leading-relaxed text-foreground/90 text-sm md:text-base">
             {cleanSummary}
           </div>
         </div>

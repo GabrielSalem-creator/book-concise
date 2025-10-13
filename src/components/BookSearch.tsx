@@ -135,37 +135,37 @@ export const BookSearch = ({ onSummaryGenerated }: BookSearchProps) => {
   };
 
   return (
-    <Card className="p-8 bg-card/50 backdrop-blur-sm border-2 hover:shadow-lg transition-all duration-300">
-      <div className="flex flex-col items-center space-y-6">
-        <div className="flex items-center space-x-3">
-          <BookOpen className="w-8 h-8 text-primary" />
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+    <Card className="p-4 md:p-8 bg-card/50 backdrop-blur-sm border-2 hover:shadow-lg transition-all duration-300">
+      <div className="flex flex-col items-center space-y-4 md:space-y-6">
+        <div className="flex items-center space-x-2 md:space-x-3">
+          <BookOpen className="w-6 h-6 md:w-8 md:h-8 text-primary" />
+          <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             Search for a Book
           </h2>
         </div>
 
         <div className="w-full max-w-xl space-y-4">
-          <div className="flex space-x-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Input
               placeholder="Enter book name..."
               value={bookName}
               onChange={(e) => setBookName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSearch()}
               disabled={isLoading}
-              className="flex-1 h-12 text-lg border-2 focus:border-primary transition-colors"
+              className="flex-1 h-11 md:h-12 text-base md:text-lg border-2 focus:border-primary transition-colors"
             />
             <Button
               onClick={handleSearch}
               disabled={isLoading}
               size="lg"
-              className="h-12 px-8 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-300"
+              className="h-11 md:h-12 px-6 md:px-8 w-full sm:w-auto bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-300"
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  <Search className="w-5 h-5 mr-2" />
-                  Search
+                  <Search className="w-5 h-5 sm:mr-2" />
+                  <span className="hidden sm:inline">Search</span>
                 </>
               )}
             </Button>

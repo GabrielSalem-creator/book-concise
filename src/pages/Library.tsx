@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface BookmarkWithDetails {
   id: string;
@@ -102,19 +103,22 @@ const Library = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
       {/* Header */}
-      <div className="border-b border-border/50 backdrop-blur-sm bg-background/50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <div className="border-b border-border/50 backdrop-blur-sm bg-background/50 sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-3 md:py-4 flex items-center justify-between">
           <Button
             variant="ghost"
+            size="sm"
             onClick={() => navigate("/dashboard")}
             className="hover:bg-primary/10"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
+            <span className="hidden sm:inline">Back to Dashboard</span>
+            <span className="sm:hidden">Back</span>
           </Button>
-          <div className="flex items-center space-x-3">
-            <BookMarked className="w-6 h-6 text-primary" />
-            <span className="text-xl font-bold">My Library</span>
+          <div className="flex items-center space-x-2 md:space-x-3">
+            <ThemeToggle />
+            <BookMarked className="w-5 h-5 md:w-6 md:h-6 text-primary" />
+            <span className="text-lg md:text-xl font-bold">My Library</span>
           </div>
         </div>
       </div>

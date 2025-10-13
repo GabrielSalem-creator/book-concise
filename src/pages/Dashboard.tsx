@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { BookOpen, Sparkles, LogOut, User, Library as LibraryIcon, Compass } from "lucide-react";
+import { BookOpen, Sparkles, LogOut, User, Library as LibraryIcon, Compass, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BookSearch } from "@/components/BookSearch";
 import { SummaryDisplay } from "@/components/SummaryDisplay";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/hooks/use-toast";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const Dashboard = () => {
   const [summary, setSummary] = useState<string>("");
@@ -42,15 +44,17 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
       {/* Header */}
       <div className="border-b border-border/50 backdrop-blur-sm bg-background/50 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <BookOpen className="w-8 h-8 text-primary" />
-            <span className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+        <div className="container mx-auto px-4 py-3 md:py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-2 md:space-x-3">
+            <BookOpen className="w-6 h-6 md:w-8 md:h-8 text-primary" />
+            <span className="text-lg md:text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               BookConcise
             </span>
           </div>
           
-          <div className="flex items-center space-x-2 md:space-x-4">
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center space-x-2 lg:space-x-4">
+            <ThemeToggle />
             <Button
               variant="ghost"
               size="sm"
@@ -58,7 +62,7 @@ const Dashboard = () => {
               className="hover:bg-accent/10"
             >
               <Compass className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Explore</span>
+              Explore
             </Button>
             <Button
               variant="ghost"
@@ -67,11 +71,11 @@ const Dashboard = () => {
               className="hover:bg-primary/10"
             >
               <LibraryIcon className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Library</span>
+              Library
             </Button>
             <div className="flex items-center space-x-2 text-sm text-muted-foreground">
               <User className="w-4 h-4" />
-              <span className="hidden md:inline">{user.email}</span>
+              <span className="hidden lg:inline truncate max-w-[150px]">{user.email}</span>
             </div>
             <Button
               variant="outline"
@@ -79,9 +83,53 @@ const Dashboard = () => {
               onClick={handleSignOut}
               className="hover:bg-destructive hover:text-destructive-foreground"
             >
-              <LogOut className="w-4 h-4 md:mr-2" />
-              <span className="hidden md:inline">Sign Out</span>
+              <LogOut className="w-4 h-4 lg:mr-2" />
+              <span className="hidden lg:inline">Sign Out</span>
             </Button>
+          </div>
+
+          {/* Mobile Navigation */}
+          <div className="flex md:hidden items-center space-x-2">
+            <ThemeToggle />
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden">
+                  <Menu className="w-5 h-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[280px]">
+                <div className="flex flex-col space-y-4 mt-8">
+                  <div className="flex items-center space-x-2 text-sm text-muted-foreground pb-4 border-b">
+                    <User className="w-4 h-4" />
+                    <span className="truncate">{user.email}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="justify-start"
+                    onClick={() => navigate("/explore")}
+                  >
+                    <Compass className="w-4 h-4 mr-2" />
+                    Explore
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="justify-start"
+                    onClick={() => navigate("/library")}
+                  >
+                    <LibraryIcon className="w-4 h-4 mr-2" />
+                    Library
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="justify-start hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </div>

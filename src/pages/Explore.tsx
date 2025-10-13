@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/hooks/use-toast";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface PublicSummary {
   id: string;
@@ -125,19 +126,21 @@ const Explore = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5">
       {/* Header */}
-      <div className="border-b border-border/50 backdrop-blur-sm bg-background/50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <div className="border-b border-border/50 backdrop-blur-sm bg-background/50 sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-3 md:py-4 flex items-center justify-between">
           <Button
             variant="ghost"
+            size="sm"
             onClick={() => navigate(user ? "/dashboard" : "/landing")}
             className="hover:bg-accent/10"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
-          <div className="flex items-center space-x-3">
-            <Compass className="w-6 h-6 text-accent" />
-            <span className="text-xl font-bold">Explore</span>
+          <div className="flex items-center space-x-2 md:space-x-3">
+            <ThemeToggle />
+            <Compass className="w-5 h-5 md:w-6 md:h-6 text-accent" />
+            <span className="text-lg md:text-xl font-bold">Explore</span>
           </div>
         </div>
       </div>
