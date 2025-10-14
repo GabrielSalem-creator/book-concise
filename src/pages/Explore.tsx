@@ -215,12 +215,22 @@ const Explore = () => {
                     variant="outline"
                     className="flex-1"
                     onClick={() => {
-                      navigate(user ? '/dashboard' : '/landing', {
-                        state: {
-                          summary: summary.content,
-                          bookTitle: summary.books.title
-                        }
-                      });
+                      // Persist selection so it survives auth redirects
+                      try {
+                        localStorage.setItem('pendingSummary', summary.content);
+                        localStorage.setItem('pendingBookTitle', summary.books?.title || '');
+                      } catch {}
+
+                      if (user) {
+                        navigate('/dashboard', {
+                          state: {
+                            summary: summary.content,
+                            bookTitle: summary.books?.title || ''
+                          }
+                        });
+                      } else {
+                        navigate('/auth');
+                      }
                     }}
                   >
                     <Eye className="w-4 h-4 mr-2" />

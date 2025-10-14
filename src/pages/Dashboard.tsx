@@ -23,13 +23,22 @@ const Dashboard = () => {
     }
   }, [user, navigate]);
 
-  // Handle incoming summary from Explore or Library
+  // Handle incoming summary from Explore/Library and auth redirect fallback
   useEffect(() => {
     if (location.state?.summary) {
       setSummary(location.state.summary);
       setBookTitle(location.state.bookTitle || "");
       // Clear the state to prevent re-loading on refresh
       window.history.replaceState({}, document.title);
+    } else {
+      const pendingSummary = localStorage.getItem('pendingSummary');
+      const pendingBookTitle = localStorage.getItem('pendingBookTitle');
+      if (pendingSummary) {
+        setSummary(pendingSummary);
+        setBookTitle(pendingBookTitle || "");
+        localStorage.removeItem('pendingSummary');
+        localStorage.removeItem('pendingBookTitle');
+      }
     }
   }, [location]);
 

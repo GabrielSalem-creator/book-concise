@@ -62,12 +62,12 @@ const Library = () => {
               .from('books')
               .select('title, author')
               .eq('id', bookmark.book_id)
-              .single(),
+              .maybeSingle(),
             supabase
               .from('summaries')
               .select('content')
               .eq('book_id', bookmark.book_id)
-              .single()
+              .maybeSingle()
           ]);
 
           return {
