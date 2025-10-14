@@ -40,28 +40,45 @@ const Library = () => {
 
   const loadBookmarks = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: bookmarksData, error } = await supabase
         .from('bookmarks')
-        .select(`
-          id,
-          book_id,
-          created_at,
-          notes,
-          is_favorite,
-          books!inner (
-            title,
-            author
-          ),
-          summaries!inner (
-            content
-          )
-        `)
+        .select('id, book_id, created_at, notes, is_favorite')
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      setBookmarks(data as any || []);
+
+      if (!bookmarksData || bookmarksData.length === 0) {
+        setBookmarks([]);
+        setIsLoading(false);
+        return;
+      }
+
+      // Fetch book details and summaries for each bookmark
+      const bookmarksWithDetails = await Promise.all(
+        bookmarksData.map(async (bookmark) => {
+          const [bookResult, summaryResult] = await Promise.all([
+            supabase
+              .from('books')
+              .select('title, author')
+              .eq('id', bookmark.book_id)
+              .single(),
+            supabase
+              .from('summaries')
+              .select('content')
+              .eq('book_id', bookmark.book_id)
+              .single()
+          ]);
+
+          return {
+            ...bookmark,
+            book: bookResult.data || { title: 'Unknown', author: null },
+            summary: summaryResult.data || { content: '' }
+          };
+        })
+      );
+
+      setBookmarks(bookmarksWithDetails as any);
     } catch (error) {
       console.error('Error loading bookmarks:', error);
       toast({

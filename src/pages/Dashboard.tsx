@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { BookOpen, Sparkles, LogOut, User, Library as LibraryIcon, Compass, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BookSearch } from "@/components/BookSearch";
@@ -14,6 +14,7 @@ const Dashboard = () => {
   const [bookTitle, setBookTitle] = useState<string>("");
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -21,6 +22,16 @@ const Dashboard = () => {
       navigate("/auth");
     }
   }, [user, navigate]);
+
+  // Handle incoming summary from Explore or Library
+  useEffect(() => {
+    if (location.state?.summary) {
+      setSummary(location.state.summary);
+      setBookTitle(location.state.bookTitle || "");
+      // Clear the state to prevent re-loading on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   const handleSummaryGenerated = (newSummary: string, title: string) => {
     setSummary(newSummary);

@@ -151,11 +151,15 @@ const Auth = () => {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/dashboard`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         }
       });
 
       if (error) throw error;
-      
+      // Don't set loading to false as page will redirect
     } catch (error) {
       console.error("Google sign in error:", error);
       toast({
