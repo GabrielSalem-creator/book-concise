@@ -232,6 +232,33 @@ export type Database = {
           },
         ]
       }
+      user_preferences: {
+        Row: {
+          completed_onboarding: boolean
+          created_at: string
+          id: string
+          themes: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_onboarding?: boolean
+          created_at?: string
+          id?: string
+          themes?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_onboarding?: boolean
+          created_at?: string
+          id?: string
+          themes?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

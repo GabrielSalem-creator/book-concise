@@ -8,6 +8,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { PersonalizedBooks } from "@/components/PersonalizedBooks";
 
 const Dashboard = () => {
   const [summary, setSummary] = useState<string>("");
@@ -181,38 +182,10 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Features */}
+        {/* Personalized Book Recommendations */}
         {!summary && (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto mt-16">
-            <div className="p-6 bg-card/30 backdrop-blur-sm rounded-lg border-2 border-border/50 hover:border-primary/50 transition-all duration-300">
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                <BookOpen className="w-6 h-6 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Smart Search</h3>
-              <p className="text-muted-foreground">
-                Find any book's PDF instantly with our intelligent search system
-              </p>
-            </div>
-
-            <div className="p-6 bg-card/30 backdrop-blur-sm rounded-lg border-2 border-border/50 hover:border-primary/50 transition-all duration-300">
-              <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center mb-4">
-                <Sparkles className="w-6 h-6 text-accent" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">AI Summaries</h3>
-              <p className="text-muted-foreground">
-                Get comprehensive summaries powered by advanced AI technology
-              </p>
-            </div>
-
-            <div className="p-6 bg-card/30 backdrop-blur-sm rounded-lg border-2 border-border/50 hover:border-primary/50 transition-all duration-300">
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                <BookOpen className="w-6 h-6 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Read or Listen</h3>
-              <p className="text-muted-foreground">
-                Choose to read the summary or have it narrated with text-to-speech
-              </p>
-            </div>
+          <div className="max-w-7xl mx-auto mt-12">
+            <PersonalizedBooks />
           </div>
         )}
       </div>

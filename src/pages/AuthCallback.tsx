@@ -29,13 +29,22 @@ const AuthCallback = () => {
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
-          navigate("/dashboard", { replace: true });
-          return;
         }
 
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          navigate("/dashboard", { replace: true });
+          // Check if user has completed onboarding
+          const { data: preferences } = await supabase
+            .from("user_preferences")
+            .select("completed_onboarding")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+
+          if (preferences?.completed_onboarding) {
+            navigate("/dashboard", { replace: true });
+          } else {
+            navigate("/onboarding", { replace: true });
+          }
         } else {
           navigate("/auth", { replace: true });
         }
