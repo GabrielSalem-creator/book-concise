@@ -68,12 +68,16 @@ const Onboarding = () => {
   const { toast } = useToast();
 
   const handleSelect = (option: string) => {
-    if (!selectedThemes.includes(option)) {
+    if (selectedThemes.includes(option)) {
+      setSelectedThemes(selectedThemes.filter(t => t !== option));
+    } else {
       setSelectedThemes([...selectedThemes, option]);
     }
-    
+  };
+
+  const handleNext = () => {
     if (currentQuestion < QUESTIONS.length - 1) {
-      setTimeout(() => setCurrentQuestion(currentQuestion + 1), 300);
+      setCurrentQuestion(currentQuestion + 1);
     }
   };
 
@@ -154,29 +158,39 @@ const Onboarding = () => {
               <Button
                 key={option}
                 onClick={() => handleSelect(option)}
-                variant="outline"
-                className="h-auto p-6 text-left justify-start hover:border-primary hover:bg-primary/5 transition-all group relative overflow-hidden"
+                variant={selectedThemes.includes(option) ? "default" : "outline"}
+                className="h-auto p-6 text-left justify-start hover:border-primary transition-all group relative overflow-hidden"
               >
                 <span className="relative z-10 flex items-center justify-between w-full">
                   <span className="text-lg">{option}</span>
                   {selectedThemes.includes(option) && (
-                    <Check className="w-5 h-5 text-primary" />
+                    <Check className="w-5 h-5" />
                   )}
                 </span>
-                <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-0 group-hover:opacity-100 transition-opacity" />
               </Button>
             ))}
           </div>
 
-          {currentQuestion === QUESTIONS.length - 1 && (
-            <Button
-              onClick={handleComplete}
-              disabled={isLoading || selectedThemes.length === 0}
-              className="w-full mt-8 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
-            >
-              {isLoading ? "Saving..." : "Complete Setup"}
-            </Button>
-          )}
+          <div className="flex gap-4 mt-8">
+            {currentQuestion < QUESTIONS.length - 1 && (
+              <Button
+                onClick={handleNext}
+                disabled={selectedThemes.length === 0}
+                className="flex-1 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
+              >
+                Next Question
+              </Button>
+            )}
+            {currentQuestion === QUESTIONS.length - 1 && (
+              <Button
+                onClick={handleComplete}
+                disabled={isLoading || selectedThemes.length === 0}
+                className="flex-1 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
+              >
+                {isLoading ? "Saving..." : "Complete Setup"}
+              </Button>
+            )}
+          </div>
         </Card>
 
         <div className="mt-6 flex flex-wrap gap-2 justify-center animate-fade-in">

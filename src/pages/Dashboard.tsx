@@ -9,10 +9,13 @@ import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { PersonalizedBooks } from "@/components/PersonalizedBooks";
+import { supabase } from "@/integrations/supabase/client";
 
 const Dashboard = () => {
   const [summary, setSummary] = useState<string>("");
   const [bookTitle, setBookTitle] = useState<string>("");
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [hasPreferences, setHasPreferences] = useState(true);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -21,8 +24,28 @@ const Dashboard = () => {
   useEffect(() => {
     if (!user) {
       navigate("/auth");
+    } else {
+      checkUserPreferences();
     }
   }, [user, navigate]);
+
+  const checkUserPreferences = async () => {
+    if (!user) return;
+    
+    const { data } = await supabase
+      .from("user_preferences")
+      .select("themes, completed_onboarding")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!data || !data.completed_onboarding || !data.themes?.length) {
+      setHasPreferences(false);
+      setShowOnboarding(true);
+    } else {
+      setHasPreferences(true);
+      setShowOnboarding(false);
+    }
+  };
 
   // Handle incoming summary from Explore/Library and auth redirect fallback
   useEffect(() => {
@@ -176,16 +199,47 @@ const Dashboard = () => {
         </div>
 
         {/* Summary Display */}
-        {summary && (
+        {summary && !showOnboarding && (
           <div className="max-w-4xl mx-auto">
             <SummaryDisplay summary={summary} bookTitle={bookTitle} />
           </div>
         )}
 
+        {/* Onboarding MCQ */}
+        {showOnboarding && (
+          <div className="max-w-4xl mx-auto">
+            <PersonalizedBooks 
+              onBookSelect={(title) => {
+                setBookTitle(title);
+                const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+                if (searchInput) {
+                  searchInput.value = title;
+                  searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+              }}
+              showOnboarding={true}
+              onOnboardingComplete={() => {
+                setShowOnboarding(false);
+                setHasPreferences(true);
+                checkUserPreferences();
+              }}
+            />
+          </div>
+        )}
+
         {/* Personalized Book Recommendations */}
-        {!summary && (
+        {!summary && !showOnboarding && hasPreferences && (
           <div className="max-w-7xl mx-auto mt-12">
-            <PersonalizedBooks />
+            <PersonalizedBooks 
+              onBookSelect={(title) => {
+                setBookTitle(title);
+                const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+                if (searchInput) {
+                  searchInput.value = title;
+                  searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+              }}
+            />
           </div>
         )}
       </div>

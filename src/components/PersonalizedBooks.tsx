@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookOpen, Headphones } from "lucide-react";
+import { BookOpen, Check, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { Progress } from "@/components/ui/progress";
 
 interface Book {
   title: string;
@@ -13,15 +14,81 @@ interface Book {
   theme: string;
 }
 
-export const PersonalizedBooks = () => {
+interface PersonalizedBooksProps {
+  onBookSelect?: (title: string) => void;
+  showOnboarding?: boolean;
+  onOnboardingComplete?: () => void;
+}
+
+const THEMES = [
+  "Technology",
+  "Literature",
+  "Physics",
+  "Mathematics",
+  "Business",
+  "Startups",
+  "Finance",
+  "Politics",
+  "History",
+  "Psychology",
+  "Philosophy",
+  "Science",
+];
+
+const QUESTIONS = [
+  {
+    id: 1,
+    question: "What's your primary reading interest?",
+    options: ["Technology", "Literature", "Science", "Business"],
+  },
+  {
+    id: 2,
+    question: "Which topic excites you the most?",
+    options: ["Startups", "Finance", "Politics", "History"],
+  },
+  {
+    id: 3,
+    question: "What field would you like to explore?",
+    options: ["Psychology", "Philosophy", "Mathematics", "Physics"],
+  },
+  {
+    id: 4,
+    question: "What drives your curiosity?",
+    options: ["Innovation", "Human Behavior", "Economics", "Arts"],
+  },
+  {
+    id: 5,
+    question: "Pick your learning style:",
+    options: ["Practical", "Theoretical", "Historical", "Futuristic"],
+  },
+  {
+    id: 6,
+    question: "What's your goal?",
+    options: ["Career Growth", "Personal Development", "Academic Research", "General Knowledge"],
+  },
+  {
+    id: 7,
+    question: "Final preference:",
+    options: ["Deep Dives", "Quick Reads", "Case Studies", "Biographies"],
+  },
+];
+
+export const PersonalizedBooks = ({ onBookSelect, showOnboarding = false, onOnboardingComplete }: PersonalizedBooksProps) => {
   const [books, setBooks] = useState<Book[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userThemes, setUserThemes] = useState<string[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    loadUserPreferences();
-  }, []);
+    if (!showOnboarding) {
+      loadUserPreferences();
+    } else {
+      setIsLoading(false);
+    }
+  }, [showOnboarding]);
 
   const loadUserPreferences = async () => {
     try {
@@ -112,11 +179,155 @@ export const PersonalizedBooks = () => {
   };
 
   const handleBookClick = async (book: Book) => {
-    toast({
-      title: "Generating summary",
-      description: `Preparing ${book.title}...`,
-    });
+    if (onBookSelect) {
+      onBookSelect(book.title);
+      toast({
+        title: "Book selected",
+        description: `${book.title} added to search box`,
+      });
+    }
   };
+
+  const handleSelect = (option: string) => {
+    if (selectedThemes.includes(option)) {
+      setSelectedThemes(selectedThemes.filter(t => t !== option));
+    } else {
+      setSelectedThemes([...selectedThemes, option]);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentQuestion < QUESTIONS.length - 1) {
+      setCurrentQuestion(currentQuestion + 1);
+    }
+  };
+
+  const handleComplete = async () => {
+    try {
+      setIsSaving(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from("user_preferences")
+        .upsert({
+          user_id: user.id,
+          themes: selectedThemes,
+          completed_onboarding: true,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Preferences saved!",
+        description: "Your personalized recommendations are ready.",
+      });
+
+      if (onOnboardingComplete) {
+        onOnboardingComplete();
+      }
+    } catch (error) {
+      console.error("Error saving preferences:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save preferences",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (showOnboarding) {
+    const progress = ((currentQuestion + 1) / QUESTIONS.length) * 100;
+
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="text-center space-y-4">
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            Let's personalize your experience
+          </h2>
+          <p className="text-muted-foreground">
+            Answer a few questions to get book recommendations tailored for you
+          </p>
+        </div>
+
+        <div className="mb-6">
+          <Progress value={progress} className="h-2" />
+          <p className="text-sm text-muted-foreground text-center mt-2">
+            Question {currentQuestion + 1} of {QUESTIONS.length}
+          </p>
+        </div>
+
+        <Card className="p-8 bg-card/50 backdrop-blur-sm border-2">
+          <h3 className="text-2xl font-semibold mb-6">
+            {QUESTIONS[currentQuestion].question}
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {QUESTIONS[currentQuestion].options.map((option) => (
+              <Button
+                key={option}
+                onClick={() => handleSelect(option)}
+                variant={selectedThemes.includes(option) ? "default" : "outline"}
+                className="h-auto p-6 text-left justify-start hover:border-primary transition-all group relative"
+              >
+                <span className="flex items-center justify-between w-full">
+                  <span className="text-lg">{option}</span>
+                  {selectedThemes.includes(option) && (
+                    <Check className="w-5 h-5" />
+                  )}
+                </span>
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex gap-4 mt-8">
+            {currentQuestion < QUESTIONS.length - 1 && (
+              <Button
+                onClick={handleNext}
+                disabled={selectedThemes.length === 0}
+                className="flex-1 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
+              >
+                Next Question
+              </Button>
+            )}
+            {currentQuestion === QUESTIONS.length - 1 && (
+              <Button
+                onClick={handleComplete}
+                disabled={isSaving || selectedThemes.length === 0}
+                className="flex-1 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
+              >
+                {isSaving ? "Saving..." : "Complete Setup"}
+              </Button>
+            )}
+          </div>
+        </Card>
+
+        <div className="flex flex-wrap gap-2 justify-center">
+          <p className="text-sm text-muted-foreground w-full text-center mb-2">
+            Selected preferences:
+          </p>
+          {selectedThemes.map((theme) => (
+            <span
+              key={theme}
+              className="px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium border border-primary/20"
+            >
+              {theme}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -174,24 +385,18 @@ export const PersonalizedBooks = () => {
               </p>
             )}
 
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1 group-hover:border-primary group-hover:text-primary transition-colors"
-              >
-                <BookOpen className="w-4 h-4 mr-2" />
-                Read
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1 group-hover:border-accent group-hover:text-accent transition-colors"
-              >
-                <Headphones className="w-4 h-4 mr-2" />
-                Listen
-              </Button>
-            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full group-hover:border-primary group-hover:text-primary transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleBookClick(book);
+              }}
+            >
+              <BookOpen className="w-4 h-4 mr-2" />
+              Read Summary
+            </Button>
           </Card>
         ))}
       </div>
