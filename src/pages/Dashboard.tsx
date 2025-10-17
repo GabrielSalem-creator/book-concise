@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 const Dashboard = () => {
   const [summary, setSummary] = useState<string>("");
   const [bookTitle, setBookTitle] = useState<string>("");
+  const [selectedBookTitle, setSelectedBookTitle] = useState<string>("");
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [hasPreferences, setHasPreferences] = useState(true);
   const { user, signOut } = useAuth();
@@ -195,7 +196,11 @@ const Dashboard = () => {
 
         {/* Search Component */}
         <div className="max-w-4xl mx-auto mb-12">
-          <BookSearch onSummaryGenerated={handleSummaryGenerated} />
+          <BookSearch 
+            onSummaryGenerated={handleSummaryGenerated}
+            key={selectedBookTitle}
+            initialBookName={selectedBookTitle}
+          />
         </div>
 
         {/* Summary Display */}
@@ -205,25 +210,28 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Onboarding MCQ */}
+        {/* Onboarding MCQ - Prominent Container */}
         {showOnboarding && (
-          <div className="max-w-4xl mx-auto">
-            <PersonalizedBooks 
-              onBookSelect={(title) => {
-                setBookTitle(title);
-                const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
-                if (searchInput) {
-                  searchInput.value = title;
-                  searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-                }
-              }}
-              showOnboarding={true}
-              onOnboardingComplete={() => {
-                setShowOnboarding(false);
-                setHasPreferences(true);
-                checkUserPreferences();
-              }}
-            />
+          <div className="max-w-5xl mx-auto mt-8">
+            <div className="bg-gradient-to-br from-primary/5 via-background to-accent/5 p-1 rounded-2xl">
+              <div className="bg-background/95 backdrop-blur-sm rounded-xl p-6 md:p-8">
+                <PersonalizedBooks 
+                  onBookSelect={(title) => {
+                    setSelectedBookTitle(title);
+                    toast({
+                      title: "Book selected",
+                      description: `${title} added to search box`,
+                    });
+                  }}
+                  showOnboarding={true}
+                  onOnboardingComplete={() => {
+                    setShowOnboarding(false);
+                    setHasPreferences(true);
+                    checkUserPreferences();
+                  }}
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -232,12 +240,11 @@ const Dashboard = () => {
           <div className="max-w-7xl mx-auto mt-12">
             <PersonalizedBooks 
               onBookSelect={(title) => {
-                setBookTitle(title);
-                const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
-                if (searchInput) {
-                  searchInput.value = title;
-                  searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-                }
+                setSelectedBookTitle(title);
+                toast({
+                  title: "Book selected",
+                  description: `${title} added to search box`,
+                });
               }}
             />
           </div>

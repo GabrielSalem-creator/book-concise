@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Loader2, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,13 +8,20 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface BookSearchProps {
   onSummaryGenerated: (summary: string, bookTitle: string) => void;
+  initialBookName?: string;
 }
 
-export const BookSearch = ({ onSummaryGenerated }: BookSearchProps) => {
-  const [bookName, setBookName] = useState("");
+export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSearchProps) => {
+  const [bookName, setBookName] = useState(initialBookName);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState("");
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (initialBookName) {
+      setBookName(initialBookName);
+    }
+  }, [initialBookName]);
 
   const handleSearch = async () => {
     if (!bookName.trim()) {
