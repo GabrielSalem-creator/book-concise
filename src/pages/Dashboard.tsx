@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { BookOpen, Sparkles, LogOut, User, Library as LibraryIcon, Compass, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const searchBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user) {
@@ -195,7 +196,7 @@ const Dashboard = () => {
         </div>
 
         {/* Search Component */}
-        <div className="max-w-4xl mx-auto mb-12">
+        <div ref={searchBoxRef} className="max-w-4xl mx-auto mb-12">
           <BookSearch 
             onSummaryGenerated={handleSummaryGenerated}
             key={selectedBookTitle}
@@ -222,6 +223,7 @@ const Dashboard = () => {
                       title: "Book selected",
                       description: `${title} added to search box`,
                     });
+                    searchBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
                   }}
                   showOnboarding={true}
                   onOnboardingComplete={() => {
@@ -245,6 +247,7 @@ const Dashboard = () => {
                   title: "Book selected",
                   description: `${title} added to search box`,
                 });
+                searchBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
               }}
             />
           </div>
