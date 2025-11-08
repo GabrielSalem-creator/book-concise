@@ -50,7 +50,25 @@ serve(async (req) => {
         console.error('[generate-summary] Error fetching preferences:', prefsError);
       }
 
-      if (preferences) {
+      // If no preferences exist, create them
+      if (!preferences) {
+        const today = new Date().toISOString().split('T')[0];
+        const { error: insertError } = await supabase
+          .from('user_preferences')
+          .insert({
+            user_id: userId,
+            daily_credits: 2,
+            last_credit_reset: today,
+            completed_onboarding: false,
+            themes: []
+          });
+        
+        if (insertError) {
+          console.error('[generate-summary] Error creating preferences:', insertError);
+        } else {
+          console.log('[generate-summary] Created new user preferences with 2 credits');
+        }
+      } else {
         const today = new Date().toISOString().split('T')[0];
         const lastReset = preferences.last_credit_reset;
         let currentCredits = preferences.daily_credits;
@@ -177,7 +195,7 @@ serve(async (req) => {
         .from('user_preferences')
         .select('daily_credits')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
       
       if (currentPrefs) {
         const { error: creditError } = await supabase
@@ -190,6 +208,8 @@ serve(async (req) => {
         } else {
           console.log('[generate-summary] Credit deducted from user');
         }
+      } else {
+        console.log('[generate-summary] No preferences found to deduct credit');
       }
     }
 
@@ -217,8 +237,8 @@ serve(async (req) => {
         .from('user_preferences')
         .select('daily_credits')
         .eq('user_id', userId)
-        .single();
-      creditsRemaining = updatedPrefs?.daily_credits;
+        .maybeSingle();
+      creditsRemaining = updatedPrefs?.daily_credits ?? null;
     }
 
     return new Response(
