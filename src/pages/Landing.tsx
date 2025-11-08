@@ -5,19 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/components/AuthProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
-
 const Landing = () => {
-  const { user } = useAuth();
+  const {
+    user
+  } = useAuth();
   const navigate = useNavigate();
-
   useEffect(() => {
     if (user) {
       navigate("/dashboard");
     }
   }, [user, navigate]);
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/10">
+  return <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/10">
       {/* Header with Theme Toggle */}
       <div className="border-b border-border/50 backdrop-blur-sm bg-background/50 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -29,11 +27,7 @@ const Landing = () => {
           </div>
           <div className="flex items-center space-x-2">
             <ThemeToggle />
-            <Button
-              size="sm"
-              onClick={() => navigate("/auth")}
-              className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
-            >
+            <Button size="sm" onClick={() => navigate("/auth")} className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90">
               Sign In
             </Button>
           </div>
@@ -57,19 +51,10 @@ const Landing = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center items-center animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300 px-4">
-            <Button
-              size="lg"
-              onClick={() => navigate("/auth")}
-              className="w-full sm:w-auto h-12 md:h-14 px-6 md:px-8 text-base md:text-lg bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg hover:shadow-xl transition-all duration-300"
-            >
+            <Button size="lg" onClick={() => navigate("/auth")} className="w-full sm:w-auto h-12 md:h-14 px-6 md:px-8 text-base md:text-lg bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg hover:shadow-xl transition-all duration-300">
               Get Started Free
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={() => navigate("/explore")}
-              className="w-full sm:w-auto h-12 md:h-14 px-6 md:px-8 text-base md:text-lg border-2 hover:bg-accent/10"
-            >
+            <Button size="lg" variant="outline" onClick={() => navigate("/explore")} className="w-full sm:w-auto h-12 md:h-14 px-6 md:px-8 text-base md:text-lg border-2 hover:bg-accent/10">
               Explore Summaries
             </Button>
           </div>
@@ -78,7 +63,7 @@ const Landing = () => {
           <div className="grid grid-cols-3 gap-4 md:gap-8 mt-16 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-400">
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-bold text-primary">10K+</div>
-              <div className="text-sm md:text-base text-muted-foreground">Books Summarized</div>
+              <div className="text-sm md:text-base text-muted-foreground">Books to Summarize</div>
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-bold text-accent">5K+</div>
@@ -162,17 +147,11 @@ const Landing = () => {
           <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
             Join thousands of readers who are learning faster and retaining more with AI-powered summaries
           </p>
-          <Button
-            size="lg"
-            onClick={() => navigate("/auth")}
-            className="h-14 px-12 text-lg bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg hover:shadow-xl transition-all duration-300"
-          >
+          <Button size="lg" onClick={() => navigate("/auth")} className="h-14 px-12 text-lg bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg hover:shadow-xl transition-all duration-300">
             Start Reading Smarter Today
           </Button>
         </Card>
       </div>
-    </div>
-  );
+    </div>;
 };
-
 export default Landing;
