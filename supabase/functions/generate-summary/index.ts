@@ -29,12 +29,82 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // First, try to find existing book
+    // Get user ID from auth header
+    const authHeader = req.headers.get('authorization');
+    let userId = null;
+    if (authHeader) {
+      const supabaseAuth = createClient(supabaseUrl, supabaseKey);
+      const { data: { user } } = await supabaseAuth.auth.getUser(authHeader.replace('Bearer ', ''));
+      userId = user?.id;
+    }
+
+    // Check user credits if authenticated
+    if (userId) {
+      const { data: preferences, error: prefsError } = await supabase
+        .from('user_preferences')
+        .select('daily_credits, last_credit_reset')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (prefsError) {
+        console.error('[generate-summary] Error fetching preferences:', prefsError);
+      }
+
+      if (preferences) {
+        const today = new Date().toISOString().split('T')[0];
+        const lastReset = preferences.last_credit_reset;
+        let currentCredits = preferences.daily_credits;
+
+        // Reset credits if it's a new day
+        if (lastReset !== today) {
+          currentCredits = 2;
+          await supabase
+            .from('user_preferences')
+            .update({
+              daily_credits: 2,
+              last_credit_reset: today
+            })
+            .eq('user_id', userId);
+          console.log('[generate-summary] Credits reset to 2 for new day');
+        }
+
+        // Check if user has credits
+        if (currentCredits <= 0) {
+          return new Response(
+            JSON.stringify({ 
+              success: false,
+              error: 'No credits remaining. You get 2 credits daily to generate new summaries.',
+              creditsRemaining: 0
+            }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+
+    // First, try to find existing book and check for existing summary
     const { data: existingBook } = await supabase
       .from('books')
-      .select('id')
+      .select('id, summaries(id, content)')
       .eq('title', bookTitle)
       .maybeSingle();
+
+    // If summary already exists, return it without consuming credits
+    if (existingBook?.summaries && existingBook.summaries.length > 0) {
+      console.log('[generate-summary] Found existing summary, returning without consuming credits');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          summary: existingBook.summaries[0].content,
+          bookId: existingBook.id,
+          summaryId: existingBook.summaries[0].id,
+          existingSummary: true
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
     let bookId = existingBook?.id;
 
@@ -101,13 +171,26 @@ serve(async (req) => {
 
     console.log(`[generate-summary] Summary generated in ${generationTime}s`);
 
-    // Get user ID from auth header
-    const authHeader = req.headers.get('authorization');
-    let userId = null;
-    if (authHeader) {
-      const supabaseAuth = createClient(supabaseUrl, supabaseKey);
-      const { data: { user } } = await supabaseAuth.auth.getUser(authHeader.replace('Bearer ', ''));
-      userId = user?.id;
+    // Deduct a credit from the user
+    if (userId) {
+      const { data: currentPrefs } = await supabase
+        .from('user_preferences')
+        .select('daily_credits')
+        .eq('user_id', userId)
+        .single();
+      
+      if (currentPrefs) {
+        const { error: creditError } = await supabase
+          .from('user_preferences')
+          .update({ daily_credits: Math.max(0, currentPrefs.daily_credits - 1) })
+          .eq('user_id', userId);
+
+        if (creditError) {
+          console.error('[generate-summary] Error deducting credit:', creditError);
+        } else {
+          console.log('[generate-summary] Credit deducted from user');
+        }
+      }
     }
 
     // Save summary to database
@@ -127,13 +210,25 @@ serve(async (req) => {
 
     console.log(`[generate-summary] Summary saved with id: ${summaryData.id}`);
 
+    // Get updated credits
+    let creditsRemaining = null;
+    if (userId) {
+      const { data: updatedPrefs } = await supabase
+        .from('user_preferences')
+        .select('daily_credits')
+        .eq('user_id', userId)
+        .single();
+      creditsRemaining = updatedPrefs?.daily_credits;
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         summary,
         bookId,
         summaryId: summaryData.id,
-        generationTime
+        generationTime,
+        creditsRemaining
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

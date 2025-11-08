@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Loader2, BookOpen } from "lucide-react";
+import { Search, Loader2, BookOpen, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -15,13 +15,49 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
   const [bookName, setBookName] = useState(initialBookName);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [credits, setCredits] = useState<number | null>(null);
   const { toast } = useToast();
+
+  // Fetch user credits
+  const fetchCredits = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: preferences } = await supabase
+      .from('user_preferences')
+      .select('daily_credits, last_credit_reset')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (preferences) {
+      const today = new Date().toISOString().split('T')[0];
+      const lastReset = preferences.last_credit_reset;
+
+      // Reset credits if it's a new day
+      if (lastReset !== today) {
+        await supabase
+          .from('user_preferences')
+          .update({
+            daily_credits: 2,
+            last_credit_reset: today
+          })
+          .eq('user_id', user.id);
+        setCredits(2);
+      } else {
+        setCredits(preferences.daily_credits);
+      }
+    }
+  };
 
   useEffect(() => {
     if (initialBookName) {
       setBookName(initialBookName);
     }
   }, [initialBookName]);
+
+  useEffect(() => {
+    fetchCredits();
+  }, []);
 
   const handleSearch = async () => {
     if (!bookName.trim()) {
@@ -119,9 +155,20 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
         throw new Error(summaryData.error || 'Failed to generate summary');
       }
 
+      // Update credits
+      if (summaryData.creditsRemaining !== undefined) {
+        setCredits(summaryData.creditsRemaining);
+      } else {
+        await fetchCredits();
+      }
+
+      const creditsMessage = summaryData.existingSummary 
+        ? "Using existing summary - no credits used" 
+        : `Summary generated! ${summaryData.creditsRemaining ?? credits ?? 0} credits remaining`;
+
       toast({
         title: "Success!",
-        description: "Book summary generated successfully",
+        description: creditsMessage,
       });
 
       onSummaryGenerated(summaryData.summary, bookName);
@@ -144,11 +191,19 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
   return (
     <Card className="p-4 md:p-8 bg-card/50 backdrop-blur-sm border-2 hover:shadow-lg transition-all duration-300">
       <div className="flex flex-col items-center space-y-4 md:space-y-6">
-        <div className="flex items-center space-x-2 md:space-x-3">
-          <BookOpen className="w-6 h-6 md:w-8 md:h-8 text-primary" />
-          <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            Search for a Book
-          </h2>
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center space-x-2 md:space-x-3">
+            <BookOpen className="w-6 h-6 md:w-8 md:h-8 text-primary" />
+            <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              Search for a Book
+            </h2>
+          </div>
+          {credits !== null && (
+            <div className="flex items-center space-x-2 bg-primary/10 px-3 py-1 rounded-full">
+              <Sparkles className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">{credits} credits</span>
+            </div>
+          )}
         </div>
 
         <div className="w-full max-w-xl space-y-4">

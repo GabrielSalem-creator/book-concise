@@ -236,7 +236,9 @@ export type Database = {
         Row: {
           completed_onboarding: boolean
           created_at: string
+          daily_credits: number | null
           id: string
+          last_credit_reset: string | null
           themes: string[]
           updated_at: string
           user_id: string
@@ -244,7 +246,9 @@ export type Database = {
         Insert: {
           completed_onboarding?: boolean
           created_at?: string
+          daily_credits?: number | null
           id?: string
+          last_credit_reset?: string | null
           themes?: string[]
           updated_at?: string
           user_id: string
@@ -252,7 +256,9 @@ export type Database = {
         Update: {
           completed_onboarding?: boolean
           created_at?: string
+          daily_credits?: number | null
           id?: string
+          last_credit_reset?: string | null
           themes?: string[]
           updated_at?: string
           user_id?: string
