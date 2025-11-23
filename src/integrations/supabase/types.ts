@@ -128,6 +128,74 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          goal_id: string | null
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          goal_id?: string | null
+          id?: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          goal_id?: string | null
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goals: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          id: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       pdf_urls: {
         Row: {
           added_by: string | null
@@ -187,6 +255,92 @@ export type Database = {
           username?: string | null
         }
         Relationships: []
+      }
+      reading_plan_books: {
+        Row: {
+          book_id: string
+          completed_at: string | null
+          created_at: string
+          goal_id: string
+          id: string
+          order_index: number
+          status: string
+        }
+        Insert: {
+          book_id: string
+          completed_at?: string | null
+          created_at?: string
+          goal_id: string
+          id?: string
+          order_index: number
+          status?: string
+        }
+        Update: {
+          book_id?: string
+          completed_at?: string | null
+          created_at?: string
+          goal_id?: string
+          id?: string
+          order_index?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_plan_books_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reading_plan_books_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reading_sessions: {
+        Row: {
+          book_id: string
+          completed_at: string | null
+          id: string
+          last_position: string | null
+          last_read_at: string
+          progress_percentage: number | null
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          book_id: string
+          completed_at?: string | null
+          id?: string
+          last_position?: string | null
+          last_read_at?: string
+          progress_percentage?: number | null
+          started_at?: string
+          user_id: string
+        }
+        Update: {
+          book_id?: string
+          completed_at?: string | null
+          id?: string
+          last_position?: string | null
+          last_read_at?: string
+          progress_percentage?: number | null
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_sessions_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       summaries: {
         Row: {

@@ -43,6 +43,35 @@ export const SummaryDisplay = ({ summary, bookTitle }: SummaryDisplayProps) => {
     newUtterance.pitch = 1;
     newUtterance.volume = 1;
 
+    // Get available voices and randomly select male or female voice
+    const voices = window.speechSynthesis.getVoices();
+    const femaleVoices = voices.filter(voice => 
+      voice.name.toLowerCase().includes('female') || 
+      voice.name.toLowerCase().includes('woman') ||
+      voice.name.includes('Samantha') ||
+      voice.name.includes('Victoria') ||
+      voice.name.includes('Karen') ||
+      voice.name.includes('Zira')
+    );
+    const maleVoices = voices.filter(voice => 
+      voice.name.toLowerCase().includes('male') || 
+      voice.name.toLowerCase().includes('man') ||
+      voice.name.includes('Daniel') ||
+      voice.name.includes('Alex') ||
+      voice.name.includes('Fred') ||
+      voice.name.includes('David')
+    );
+
+    // Randomly choose between male and female
+    const useFemale = Math.random() > 0.5;
+    const selectedVoices = useFemale ? femaleVoices : maleVoices;
+    
+    if (selectedVoices.length > 0) {
+      const randomVoice = selectedVoices[Math.floor(Math.random() * selectedVoices.length)];
+      newUtterance.voice = randomVoice;
+      console.log(`Selected voice: ${randomVoice.name} (${useFemale ? 'Female' : 'Male'})`);
+    }
+
     newUtterance.onend = () => {
       setIsReading(false);
     };

@@ -143,9 +143,29 @@ serve(async (req) => {
       console.log(`[generate-summary] Created new book with id: ${bookId}`);
     }
 
-    // Generate AI summary
-    const startTime = Date.now();
-    
+    // Call AI to generate summary with specific details and stories
+    const summaryPrompt = `Generate an exceptionally detailed and engaging summary of the book "${bookTitle}" by ${bookAuthor}. 
+
+Your summary MUST include:
+1. **Core Themes & Main Ideas**: Explain the 3-5 central concepts in depth
+2. **Specific Stories & Examples**: Include at least 2-3 concrete stories, case studies, or real examples from the book that illustrate key points
+3. **Key Insights**: Highlight breakthrough ideas or paradigm shifts the book offers
+4. **Actionable Takeaways**: Provide 5-7 specific, practical actions readers can implement
+5. **Context & Background**: Explain why this book matters and its unique contribution
+6. **Memorable Quotes**: Include 2-3 impactful quotes from the book
+7. **Chapter Breakdown**: Brief overview of major sections/chapters
+
+Requirements:
+- Length: 800-1200 words (very comprehensive and detailed)
+- Be SPECIFIC, not general - use actual examples and stories from the book
+- Write in an engaging, storytelling style
+- Make it memorable and practical
+- Include concrete details like names, situations, experiments, or case studies mentioned in the book
+- Avoid generic statements - every point should be specific to THIS book
+
+Make it so detailed and specific that someone reading this summary will remember the book's core stories and can apply its teachings immediately.`;
+
+    console.log('[generate-summary] Calling AI API to generate detailed summary...');
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -157,15 +177,18 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are a professional book summarizer. Create concise, engaging summaries that capture the key ideas, main themes, and important takeaways. Keep summaries between 300-500 words.'
+            content: 'You are a professional book analyst who creates exceptionally detailed, specific, and practical summaries. Focus on concrete stories, examples, and actionable insights.'
           },
           {
             role: 'user',
-            content: `Create a comprehensive summary for the book "${bookTitle}"${bookAuthor ? ` by ${bookAuthor}` : ''}. Include:\n1. Main premise and themes\n2. Key ideas and concepts\n3. Important takeaways\n4. Target audience\n\nMake it engaging and easy to understand.`
+            content: summaryPrompt
           }
         ],
       }),
     });
+
+    // Generate AI summary
+    const startTime = Date.now();
 
     if (!aiResponse.ok) {
       if (aiResponse.status === 429) {
