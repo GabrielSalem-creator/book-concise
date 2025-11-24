@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 
 interface BookSearchProps {
   onSummaryGenerated: (summary: string, bookTitle: string) => void;
@@ -17,6 +18,7 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
   const [status, setStatus] = useState("");
   const [credits, setCredits] = useState<number | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   // Fetch user credits
   const fetchCredits = async () => {
@@ -90,16 +92,14 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
         .limit(1)
         .maybeSingle();
 
-      // If we found an existing summary, use it
+      // If we found an existing summary, navigate to read page
       if (existingBook && existingBook.summaries && existingBook.summaries.length > 0) {
-        const latestSummary = existingBook.summaries[0];
-        
         toast({
           title: "Found existing summary!",
-          description: "Using previously generated summary",
+          description: "Opening book...",
         });
 
-        onSummaryGenerated(latestSummary.content, existingBook.title);
+        navigate(`/read/${existingBook.id}`);
         setBookName("");
         setStatus("");
         setIsLoading(false);
@@ -171,7 +171,18 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
         description: creditsMessage,
       });
 
-      onSummaryGenerated(summaryData.summary, bookName);
+      // Find the book ID and navigate to read page
+      const { data: newBook } = await supabase
+        .from('books')
+        .select('id')
+        .ilike('title', `%${bookName}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (newBook) {
+        navigate(`/read/${newBook.id}`);
+      }
+      
       setBookName("");
       setStatus("");
 
