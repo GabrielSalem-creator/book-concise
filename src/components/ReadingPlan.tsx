@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Circle, BookOpen } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useNavigate } from "react-router-dom";
 
 interface Book {
   id: string;
@@ -17,6 +18,8 @@ interface ReadingPlanProps {
 }
 
 export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
+  const navigate = useNavigate();
+
   if (!goalTitle || books.length === 0) {
     return (
       <Card className="p-8 text-center border-dashed border-2 border-border/50 bg-muted/20">
@@ -60,12 +63,13 @@ export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
           {books.map((book, idx) => (
             <div
               key={book.id}
-              className={`flex items-start gap-4 p-4 rounded-lg transition-all ${
+              onClick={() => navigate(`/read/${book.id}`)}
+              className={`flex items-start gap-4 p-4 rounded-lg transition-all cursor-pointer hover:scale-[1.02] ${
                 book.status === 'completed'
-                  ? 'bg-green-500/10 border border-green-500/20'
+                  ? 'bg-green-500/10 border border-green-500/20 hover:bg-green-500/15'
                   : book.status === 'reading'
-                  ? 'bg-blue-500/10 border border-blue-500/20'
-                  : 'bg-muted/30 border border-border/30'
+                  ? 'bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/15 ring-2 ring-blue-500/30'
+                  : 'bg-muted/30 border border-border/30 hover:bg-muted/40'
               }`}
             >
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-background shadow-sm shrink-0">

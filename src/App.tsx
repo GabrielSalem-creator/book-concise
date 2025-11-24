@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Library from "./pages/Library";
 import Explore from "./pages/Explore";
 import Chat from "./pages/Chat";
+import ReadBook from "./pages/ReadBook";
 import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
 import Onboarding from "./pages/Onboarding";
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/library" element={<Library />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/read/:bookId" element={<ReadBook />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/onboarding" element={<Onboarding />} />

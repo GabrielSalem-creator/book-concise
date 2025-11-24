@@ -212,6 +212,16 @@ const Dashboard = () => {
         </div>
       </header>
 
+      {/* Sticky Search Bar */}
+      <div className="sticky top-16 z-40 backdrop-blur-xl bg-background/80 border-b border-border/50">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <BookSearch
+            onSummaryGenerated={handleSummaryGenerated}
+            initialBookName=""
+          />
+        </div>
+      </div>
+
       {/* Main Content */}
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
@@ -242,14 +252,6 @@ const Dashboard = () => {
                   isPaused={currentReading?.isPaused || false}
                   onResume={handleResumeReading}
                   onPause={handlePauseReading}
-                />
-              </div>
-
-              <div>
-                <h2 className="text-2xl font-bold mb-4">Search for Books</h2>
-                <BookSearch
-                  onSummaryGenerated={handleSummaryGenerated}
-                  initialBookName=""
                 />
               </div>
             </div>
