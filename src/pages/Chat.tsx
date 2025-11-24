@@ -22,6 +22,7 @@ const Chat = () => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [hasActiveGoal, setHasActiveGoal] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,7 +31,21 @@ const Chat = () => {
       return;
     }
     loadChatHistory();
+    checkActiveGoal();
   }, [user, navigate]);
+
+  const checkActiveGoal = async () => {
+    if (!user) return;
+    
+    const { data } = await supabase
+      .from('goals')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle();
+    
+    setHasActiveGoal(!!data);
+  };
 
   useEffect(() => {
     scrollToBottom();
@@ -82,6 +97,17 @@ const Chat = () => {
       if (error) throw error;
 
       setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+      
+      // Check if goal was created or if user has active goal
+      if (data.goalCreated) {
+        setHasActiveGoal(true);
+        toast({
+          title: "Reading Plan Created!",
+          description: "Check your Dashboard to start reading.",
+        });
+      } else if (data.hasActiveGoal) {
+        setHasActiveGoal(true);
+      }
     } catch (error: any) {
       console.error('Error sending message:', error);
       toast({
@@ -211,18 +237,24 @@ const Chat = () => {
 
           {/* Input */}
           <div className="p-4 border-t border-border/50 bg-background/50 backdrop-blur">
+            {hasActiveGoal && messages.length > 0 && (
+              <div className="mb-3 p-3 rounded-lg bg-primary/10 border border-primary/20 text-sm text-center">
+                <p className="font-medium">You have an active reading goal</p>
+                <p className="text-xs text-muted-foreground mt-1">Complete your current plan to set a new goal</p>
+              </div>
+            )}
             <div className="flex gap-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Describe your goals or ask for book recommendations..."
+                placeholder={hasActiveGoal ? "Complete your current goal first..." : "Describe your goals or ask for book recommendations..."}
                 className="flex-1 bg-background/80 border-border/50"
-                disabled={isLoading}
+                disabled={isLoading || hasActiveGoal}
               />
               <Button
                 onClick={sendMessage}
-                disabled={isLoading || !input.trim()}
+                disabled={isLoading || !input.trim() || hasActiveGoal}
                 size="icon"
                 className="shrink-0"
               >
