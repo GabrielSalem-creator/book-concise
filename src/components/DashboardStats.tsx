@@ -3,30 +3,16 @@ import { BookOpen, CheckCircle2, Target, TrendingUp } from "lucide-react";
 
 interface DashboardStatsProps {
   booksRead: number;
-  currentlyReading: number;
-  activeGoals: number;
   readingStreak: number;
 }
 
-export const DashboardStats = ({ booksRead, currentlyReading, activeGoals, readingStreak }: DashboardStatsProps) => {
+export const DashboardStats = ({ booksRead, readingStreak }: DashboardStatsProps) => {
   const stats = [
     {
       label: "Books Completed",
       value: booksRead,
       icon: CheckCircle2,
       gradient: "from-green-500 to-emerald-600",
-    },
-    {
-      label: "Currently Reading",
-      value: currentlyReading,
-      icon: BookOpen,
-      gradient: "from-blue-500 to-cyan-600",
-    },
-    {
-      label: "Active Goals",
-      value: activeGoals,
-      icon: Target,
-      gradient: "from-purple-500 to-pink-600",
     },
     {
       label: "Day Streak",
@@ -37,7 +23,7 @@ export const DashboardStats = ({ booksRead, currentlyReading, activeGoals, readi
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {stats.map((stat, idx) => (
         <Card
           key={idx}

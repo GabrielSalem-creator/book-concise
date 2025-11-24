@@ -31,26 +31,40 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
+    // Check if user has an active goal
+    const { data: activeGoal } = await supabase
+      .from('goals')
+      .select('id, title, status')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (activeGoal) {
+      const response = "You already have an active reading goal in progress. Please complete your current reading plan before setting a new goal. Check your Dashboard to see your progress!";
+      
+      await supabase.from('chat_messages').insert([
+        { user_id: user.id, role: 'user', content: message },
+        { user_id: user.id, role: 'assistant', content: response }
+      ]);
+
+      return new Response(JSON.stringify({ response, hasActiveGoal: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     if (!lovableApiKey) {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    // System prompt for goal-based book recommendations
-    const systemPrompt = `You are an expert reading advisor and goal achievement coach. Your role is to:
-1. Understand the user's goals and ambitions deeply
-2. Recommend specific books that will help them achieve their goals
-3. Create a structured reading plan with clear milestones
-4. Provide actionable advice on how to apply book knowledge
+    // System prompt for concise, goal-based book recommendations
+    const systemPrompt = `You are a concise reading advisor. When users share their goals:
 
-When recommending books:
-- Be specific about book titles and authors
-- Explain exactly how each book helps achieve the goal
-- Create a logical reading order (foundational books first, advanced later)
-- Recommend 3-8 books per goal (not too few, not overwhelming)
-- Consider diverse perspectives and approaches
+1. Respond in 2-3 sentences acknowledging their goal
+2. Use the create_reading_plan tool to recommend 4-6 specific books
+3. Keep your language brief and encouraging
 
-Always respond in a helpful, encouraging tone. Focus on practical application of knowledge.`;
+Important: Always use the tool to create the reading plan. The tool will handle book creation.`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -68,6 +82,42 @@ Always respond in a helpful, encouraging tone. Focus on practical application of
         model: 'google/gemini-2.5-flash',
         messages,
         temperature: 0.7,
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'create_reading_plan',
+            description: 'Create a reading plan with specific books to help achieve a goal',
+            parameters: {
+              type: 'object',
+              properties: {
+                goal_title: {
+                  type: 'string',
+                  description: 'A clear, concise title for the goal (e.g., "Master Leadership Skills")'
+                },
+                goal_description: {
+                  type: 'string',
+                  description: 'Brief description of what the user wants to achieve'
+                },
+                books: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      title: { type: 'string', description: 'Full book title' },
+                      author: { type: 'string', description: 'Author name' },
+                      reason: { type: 'string', description: 'One sentence why this book helps achieve the goal' }
+                    },
+                    required: ['title', 'author', 'reason']
+                  },
+                  minItems: 4,
+                  maxItems: 6
+                }
+              },
+              required: ['goal_title', 'goal_description', 'books']
+            }
+          }
+        }],
+        tool_choice: { type: 'function', function: { name: 'create_reading_plan' } }
       }),
     });
 
@@ -78,15 +128,90 @@ Always respond in a helpful, encouraging tone. Focus on practical application of
     }
 
     const data = await response.json();
-    const aiResponse = data.choices[0].message.content;
+    const toolCall = data.choices[0].message.tool_calls?.[0];
 
-    // Save the conversation to database
+    if (!toolCall) {
+      throw new Error('No reading plan generated');
+    }
+
+    const planData = JSON.parse(toolCall.function.arguments);
+
+    // Create goal
+    const { data: newGoal, error: goalError } = await supabase
+      .from('goals')
+      .insert({
+        user_id: user.id,
+        title: planData.goal_title,
+        description: planData.goal_description,
+        status: 'active'
+      })
+      .select()
+      .single();
+
+    if (goalError) throw goalError;
+
+    // Create or get books and add to reading plan
+    for (let i = 0; i < planData.books.length; i++) {
+      const bookInfo = planData.books[i];
+      
+      // Check if book exists
+      let { data: existingBook } = await supabase
+        .from('books')
+        .select('id')
+        .eq('title', bookInfo.title)
+        .eq('author', bookInfo.author)
+        .maybeSingle();
+
+      let bookId: string;
+
+      if (existingBook) {
+        bookId = existingBook.id;
+      } else {
+        // Create new book
+        const { data: newBook, error: bookError } = await supabase
+          .from('books')
+          .insert({
+            title: bookInfo.title,
+            author: bookInfo.author,
+            description: bookInfo.reason
+          })
+          .select()
+          .single();
+
+        if (bookError) throw bookError;
+        bookId = newBook.id;
+      }
+
+      // Add to reading plan
+      await supabase
+        .from('reading_plan_books')
+        .insert({
+          goal_id: newGoal.id,
+          book_id: bookId,
+          order_index: i,
+          status: 'pending'
+        });
+    }
+
+    // Create concise response
+    const bookList = planData.books
+      .map((b: any, i: number) => `${i + 1}. "${b.title}" by ${b.author}`)
+      .join('\n');
+
+    const aiResponse = `Great! I've created your reading plan: "${planData.goal_title}"
+
+Here are your books:
+${bookList}
+
+Check your Dashboard to start reading and track your progress!`;
+
+    // Save conversation
     await supabase.from('chat_messages').insert([
       { user_id: user.id, role: 'user', content: message },
       { user_id: user.id, role: 'assistant', content: aiResponse }
     ]);
 
-    return new Response(JSON.stringify({ response: aiResponse }), {
+    return new Response(JSON.stringify({ response: aiResponse, goalCreated: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {

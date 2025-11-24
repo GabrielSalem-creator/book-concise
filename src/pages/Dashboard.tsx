@@ -226,8 +226,6 @@ const Dashboard = () => {
           {/* Stats Grid */}
           <DashboardStats
             booksRead={booksRead}
-            currentlyReading={currentReading ? 1 : 0}
-            activeGoals={activeGoal ? 1 : 0}
             readingStreak={readingStreak}
           />
 
