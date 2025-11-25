@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Volume2, VolumeX, BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause } from "lucide-react";
+import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -29,6 +29,7 @@ const ReadBook = () => {
   const [selectedVoice, setSelectedVoice] = useState<"random" | "male" | "female">("random");
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [readingSessionId, setReadingSessionId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (bookId) {
@@ -39,6 +40,7 @@ const ReadBook = () => {
   }, [bookId, user]);
 
   const loadBook = async () => {
+    setIsLoading(true);
     const { data, error } = await supabase
       .from('books')
       .select(`
@@ -70,6 +72,7 @@ const ReadBook = () => {
         .trim();
       setSummary(cleanSummary);
     }
+    setIsLoading(false);
   };
 
   const loadReadingSession = async () => {
@@ -105,7 +108,7 @@ const ReadBook = () => {
   const createOrUpdateSession = async () => {
     if (!user || !bookId) return;
 
-    // Check if there's another active session and complete it
+    // Complete other active sessions
     const { data: activeSessions } = await supabase
       .from('reading_sessions')
       .select('id')
@@ -178,6 +181,15 @@ const ReadBook = () => {
   };
 
   const handlePlay = async () => {
+    if (!summary) {
+      toast({
+        title: "No content",
+        description: "No summary available to read",
+        variant: "destructive",
+      });
+      return;
+    }
+
     await createOrUpdateSession();
 
     if (isPaused && utterance) {
@@ -195,7 +207,6 @@ const ReadBook = () => {
     const voice = getVoice();
     if (voice) {
       newUtterance.voice = voice;
-      console.log(`Selected voice: ${voice.name}`);
     }
 
     let lastProgress = 0;
@@ -204,7 +215,6 @@ const ReadBook = () => {
         const currentProgress = (event.charIndex / summary.length) * 100;
         setProgress(currentProgress);
         
-        // Update database every 10% progress
         if (currentProgress - lastProgress >= 10 && readingSessionId) {
           lastProgress = currentProgress;
           supabase
@@ -224,7 +234,6 @@ const ReadBook = () => {
       setIsPaused(false);
       setProgress(100);
 
-      // Mark as completed
       if (readingSessionId) {
         await supabase
           .from('reading_sessions')
@@ -234,7 +243,6 @@ const ReadBook = () => {
           })
           .eq('id', readingSessionId);
 
-        // Update reading plan book status if it's part of a plan
         const { data: planBook } = await supabase
           .from('reading_plan_books')
           .select('id, goal_id')
@@ -251,7 +259,6 @@ const ReadBook = () => {
             })
             .eq('id', planBook.id);
 
-          // Check if all books in the goal are completed
           const { data: allPlanBooks } = await supabase
             .from('reading_plan_books')
             .select('status')
@@ -293,7 +300,7 @@ const ReadBook = () => {
   };
 
   const handlePause = () => {
-    if (utterance) {
+    if (utterance && isReading) {
       window.speechSynthesis.pause();
       setIsPaused(true);
       setIsReading(false);
@@ -363,41 +370,51 @@ const ReadBook = () => {
     });
   };
 
-  if (!book) {
-    return null;
+  if (isLoading || !book) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mb-4 glow-effect"></div>
+          <p className="text-muted-foreground">Loading book...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-5xl">
+        <div className="space-y-8">
           {/* Header */}
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => navigate('/dashboard')}
+              className="hover-lift"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-1">
-              <h1 className="text-2xl sm:text-3xl font-bold">{book.title}</h1>
+              <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
+                {book.title}
+              </h1>
               {book.author && (
-                <p className="text-muted-foreground">{book.author}</p>
+                <p className="text-muted-foreground mt-1 text-lg">{book.author}</p>
               )}
             </div>
           </div>
 
-          {/* Controls */}
-          <Card className="p-6 bg-card/50 backdrop-blur border-border/50">
-            <div className="space-y-4">
+          {/* Controls Card */}
+          <Card className="glass-morphism p-8 border-primary/20 hover-lift glow-effect">
+            <div className="space-y-6">
               <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {isPaused || !isReading ? (
                     <Button
                       size="lg"
                       onClick={handlePlay}
-                      className="gap-2"
+                      className="gap-2 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-opacity px-8 glow-effect"
                     >
                       <Play className="w-5 h-5" />
                       {isPaused ? 'Resume' : 'Play'}
@@ -405,9 +422,9 @@ const ReadBook = () => {
                   ) : (
                     <Button
                       size="lg"
-                      variant="outline"
+                      variant="secondary"
                       onClick={handlePause}
-                      className="gap-2"
+                      className="gap-2 px-8"
                     >
                       <Pause className="w-5 h-5" />
                       Pause
@@ -418,7 +435,9 @@ const ReadBook = () => {
                     <Button
                       variant="outline"
                       onClick={handleStop}
+                      className="gap-2 hover-lift"
                     >
+                      <StopCircle className="w-4 h-4" />
                       Stop
                     </Button>
                   )}
@@ -427,11 +446,11 @@ const ReadBook = () => {
                 <div className="flex items-center gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon">
+                      <Button variant="outline" size="icon" className="hover-lift">
                         <Settings className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent>
+                    <DropdownMenuContent className="glass-morphism">
                       <DropdownMenuItem onClick={() => setSelectedVoice("random")}>
                         Random Voice {selectedVoice === "random" && "✓"}
                       </DropdownMenuItem>
@@ -448,7 +467,7 @@ const ReadBook = () => {
                     variant="outline"
                     size="icon"
                     onClick={handleBookmark}
-                    className={isBookmarked ? "bg-primary text-primary-foreground" : ""}
+                    className={`hover-lift ${isBookmarked ? "bg-primary/20 text-primary border-primary/30" : ""}`}
                   >
                     <BookmarkPlus className="w-4 h-4" />
                   </Button>
@@ -457,6 +476,7 @@ const ReadBook = () => {
                     variant="outline"
                     size="icon"
                     onClick={handleShare}
+                    className="hover-lift"
                   >
                     <Share2 className="w-4 h-4" />
                   </Button>
@@ -464,22 +484,27 @@ const ReadBook = () => {
               </div>
 
               {(isReading || isPaused || progress > 0) && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Progress</span>
-                    <span className="font-semibold">{Math.round(progress)}%</span>
+                    <span className="font-semibold text-primary">{Math.round(progress)}%</span>
                   </div>
-                  <Progress value={progress} className="h-2" />
+                  <div className="relative h-3 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-secondary transition-all duration-500 glow-effect"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
                 </div>
               )}
             </div>
           </Card>
 
           {/* Summary Content */}
-          <Card className="p-6 bg-card/50 backdrop-blur border-border/50">
-            <div className="prose prose-sm md:prose-lg max-w-none dark:prose-invert">
-              <div className="whitespace-pre-wrap leading-relaxed text-foreground/90">
-                {summary}
+          <Card className="glass-morphism p-8 border-primary/20">
+            <div className="prose prose-lg max-w-none prose-invert">
+              <div className="whitespace-pre-wrap leading-relaxed text-foreground/90 text-lg">
+                {summary || "No summary available for this book."}
               </div>
             </div>
           </Card>

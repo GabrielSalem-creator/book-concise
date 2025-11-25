@@ -38,22 +38,24 @@ export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
   const progressPercentage = (completedCount / books.length) * 100;
 
   return (
-    <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur shadow-lg">
-      <div className="p-6 border-b border-border/50 bg-muted/20">
+    <Card className="overflow-hidden glass-morphism border-primary/20 glow-effect">
+      <div className="p-6 border-b border-primary/20 bg-gradient-to-r from-primary/10 to-accent/10">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h3 className="text-xl font-bold mb-1">{goalTitle}</h3>
+            <h3 className="text-xl font-bold mb-1 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              {goalTitle}
+            </h3>
             <p className="text-sm text-muted-foreground">
               {completedCount} of {books.length} books completed
             </p>
           </div>
-          <Badge variant="secondary" className="font-semibold">
+          <Badge variant="secondary" className="font-semibold bg-primary/20 text-primary border-primary/30">
             {Math.round(progressPercentage)}%
           </Badge>
         </div>
-        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+        <div className="relative w-full h-3 bg-muted rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-primary to-primary/60 transition-all duration-500"
+            className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-secondary transition-all duration-500"
             style={{ width: `${progressPercentage}%` }}
           />
         </div>
@@ -64,30 +66,44 @@ export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
             <div
               key={book.id}
               onClick={() => navigate(`/read/${book.id}`)}
-              className={`flex items-start gap-4 p-4 rounded-lg transition-all cursor-pointer hover:scale-[1.02] ${
+              className={`group flex items-start gap-4 p-4 rounded-xl transition-all cursor-pointer hover-lift ${
                 book.status === 'completed'
-                  ? 'bg-green-500/10 border border-green-500/20 hover:bg-green-500/15'
+                  ? 'bg-gradient-to-r from-green-500/10 to-green-600/10 border border-green-500/30'
                   : book.status === 'reading'
-                  ? 'bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/15 ring-2 ring-blue-500/30'
-                  : 'bg-muted/30 border border-border/30 hover:bg-muted/40'
+                  ? 'bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/30 ring-2 ring-primary/30'
+                  : 'bg-muted/20 border border-border/30 hover:bg-muted/30'
               }`}
             >
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-background shadow-sm shrink-0">
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 transition-all ${
+                book.status === 'completed' 
+                  ? 'bg-green-500/20 group-hover:bg-green-500/30' 
+                  : book.status === 'reading'
+                  ? 'bg-primary/20 group-hover:bg-primary/30'
+                  : 'bg-muted/30 group-hover:bg-muted/40'
+              }`}>
                 {book.status === 'completed' ? (
-                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                  <CheckCircle2 className="w-5 h-5 text-green-400" />
                 ) : book.status === 'reading' ? (
-                  <BookOpen className="w-4 h-4 text-blue-500" />
+                  <BookOpen className="w-5 h-5 text-primary" />
                 ) : (
-                  <Circle className="w-4 h-4 text-muted-foreground" />
+                  <Circle className="w-5 h-5 text-muted-foreground" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm leading-tight mb-1 truncate">{book.title}</p>
+                <p className="font-semibold text-sm leading-tight mb-1 truncate group-hover:text-primary transition-colors">
+                  {book.title}
+                </p>
                 <p className="text-xs text-muted-foreground truncate">{book.author}</p>
               </div>
               <Badge
                 variant={book.status === 'completed' ? 'default' : 'outline'}
-                className="shrink-0 text-xs"
+                className={`shrink-0 text-xs ${
+                  book.status === 'completed' 
+                    ? 'bg-green-500/20 text-green-400 border-green-500/30' 
+                    : book.status === 'reading'
+                    ? 'bg-primary/20 text-primary border-primary/30'
+                    : ''
+                }`}
               >
                 {book.status === 'completed' ? 'Done' : book.status === 'reading' ? 'Reading' : 'Pending'}
               </Badge>

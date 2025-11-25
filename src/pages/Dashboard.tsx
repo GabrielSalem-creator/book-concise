@@ -167,14 +167,16 @@ const Dashboard = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50">
+      <header className="sticky top-0 z-50 glass-morphism border-b border-primary/20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <BookOpen className="w-7 h-7 text-primary" />
-              <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+              <div className="relative">
+                <BookOpen className="w-7 h-7 text-primary glow-effect" />
+              </div>
+              <span className="text-xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
                 BookConcise
               </span>
             </div>
@@ -183,7 +185,7 @@ const Dashboard = () => {
             <nav className="hidden md:flex items-center gap-2">
               <NavLinks />
               <ThemeToggle />
-              <Button variant="ghost" size="icon" onClick={handleSignOut}>
+              <Button variant="outline" size="icon" onClick={handleSignOut} className="hover-lift">
                 <LogOut className="w-4 h-4" />
               </Button>
             </nav>
@@ -197,7 +199,7 @@ const Dashboard = () => {
                     <Menu className="w-5 h-5" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent>
+                <SheetContent className="glass-morphism">
                   <div className="flex flex-col gap-4 mt-8">
                     <NavLinks />
                     <Button variant="outline" onClick={handleSignOut} className="w-full justify-start">
@@ -213,8 +215,8 @@ const Dashboard = () => {
       </header>
 
       {/* Sticky Search Bar */}
-      <div className="sticky top-16 z-40 backdrop-blur-xl bg-background/80 border-b border-border/50">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div className="sticky top-16 z-40 glass-morphism border-b border-primary/20">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-5">
           <BookSearch
             onSummaryGenerated={handleSummaryGenerated}
             initialBookName=""
@@ -224,13 +226,13 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
+        <div className="space-y-10">
           {/* Welcome Section */}
-          <div className="space-y-2">
-            <h1 className="text-3xl sm:text-4xl font-bold">
-              Welcome back, <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">{user.email?.split('@')[0]}</span>
+          <div className="text-center space-y-3">
+            <h1 className="text-5xl sm:text-6xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent animate-in">
+              Welcome back
             </h1>
-            <p className="text-muted-foreground">Track your reading journey and achieve your goals</p>
+            <p className="text-muted-foreground text-lg">Track your reading journey and achieve your goals</p>
           </div>
 
           {/* Stats Grid */}
@@ -242,36 +244,38 @@ const Dashboard = () => {
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Left Column */}
-            <div className="space-y-8">
-              <div>
-                <h2 className="text-2xl font-bold mb-4">Currently Reading</h2>
-                <CurrentReading
-                  bookTitle={currentReading?.bookTitle}
-                  bookAuthor={currentReading?.bookAuthor}
-                  progress={currentReading?.progress || 0}
-                  isPaused={currentReading?.isPaused || false}
-                  onResume={handleResumeReading}
-                  onPause={handlePauseReading}
-                />
-              </div>
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                Currently Reading
+              </h2>
+              <CurrentReading
+                bookTitle={currentReading?.bookTitle}
+                bookAuthor={currentReading?.bookAuthor}
+                progress={currentReading?.progress || 0}
+                isPaused={currentReading?.isPaused || false}
+                onResume={handleResumeReading}
+                onPause={handlePauseReading}
+              />
             </div>
 
             {/* Right Column */}
-            <div className="space-y-8">
-              <div>
-                <h2 className="text-2xl font-bold mb-4">Reading Plan</h2>
-                <ReadingPlan
-                  goalTitle={activeGoal?.title}
-                  books={readingPlanBooks}
-                />
-              </div>
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-accent to-secondary bg-clip-text text-transparent">
+                Reading Plan
+              </h2>
+              <ReadingPlan
+                goalTitle={activeGoal?.title}
+                books={readingPlanBooks}
+              />
             </div>
           </div>
 
           {/* Summary Display (Full Width) */}
           {summary && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <h2 className="text-2xl font-bold mb-4">Generated Summary</h2>
+              <h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                Generated Summary
+              </h2>
               <SummaryDisplay summary={summary} bookTitle={bookTitle} />
             </div>
           )}
