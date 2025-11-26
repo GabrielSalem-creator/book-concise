@@ -4,7 +4,6 @@ import { BookOpen, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu 
 import { Button } from "@/components/ui/button";
 import { BookSearch } from "@/components/BookSearch";
 import { SummaryDisplay } from "@/components/SummaryDisplay";
-import { DashboardStats } from "@/components/DashboardStats";
 import { CurrentReading } from "@/components/CurrentReading";
 import { ReadingPlan } from "@/components/ReadingPlan";
 import { useAuth } from "@/components/AuthProvider";
@@ -17,7 +16,8 @@ const Dashboard = () => {
   const [summary, setSummary] = useState<string>("");
   const [bookTitle, setBookTitle] = useState<string>("");
   const [booksRead, setBooksRead] = useState(0);
-  const [currentReading, setCurrentReading] = useState<any>(null);
+  const [currentBook, setCurrentBook] = useState<any>(null);
+  const [currentProgress, setCurrentProgress] = useState(0);
   const [activeGoal, setActiveGoal] = useState<any>(null);
   const [readingPlanBooks, setReadingPlanBooks] = useState<any[]>([]);
   const [readingStreak, setReadingStreak] = useState(0);
@@ -65,12 +65,12 @@ const Dashboard = () => {
       .maybeSingle();
 
     if (currentSession) {
-      setCurrentReading({
-        bookTitle: currentSession.books.title,
-        bookAuthor: currentSession.books.author,
-        progress: currentSession.progress_percentage || 0,
-        isPaused: false,
+      setCurrentBook({
+        id: currentSession.books.id,
+        title: currentSession.books.title,
+        author: currentSession.books.author,
       });
+      setCurrentProgress(currentSession.progress_percentage || 0);
     }
 
     // Load active goal and reading plan
@@ -168,17 +168,31 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
-      {/* Header */}
+      {/* Header with Stats */}
       <header className="sticky top-0 z-50 glass-morphism border-b border-primary/20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <BookOpen className="w-7 h-7 text-primary glow-effect" />
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <BookOpen className="w-7 h-7 text-primary glow-effect" />
+                </div>
+                <span className="text-xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
+                  BookConcise
+                </span>
               </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
-                BookConcise
-              </span>
+              
+              {/* Stats in Header */}
+              <div className="hidden lg:flex items-center gap-4">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg glass-morphism border border-primary/20">
+                  <span className="text-sm text-muted-foreground">Books:</span>
+                  <span className="text-lg font-bold text-primary">{booksRead}</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg glass-morphism border border-accent/20">
+                  <span className="text-sm text-muted-foreground">Streak:</span>
+                  <span className="text-lg font-bold text-accent">{readingStreak}</span>
+                </div>
+              </div>
             </div>
 
             {/* Desktop Navigation */}
@@ -201,6 +215,16 @@ const Dashboard = () => {
                 </SheetTrigger>
                 <SheetContent className="glass-morphism">
                   <div className="flex flex-col gap-4 mt-8">
+                    <div className="flex gap-3 mb-4">
+                      <div className="flex-1 text-center p-3 rounded-lg glass-morphism border border-primary/20">
+                        <div className="text-2xl font-bold text-primary">{booksRead}</div>
+                        <div className="text-xs text-muted-foreground">Books</div>
+                      </div>
+                      <div className="flex-1 text-center p-3 rounded-lg glass-morphism border border-accent/20">
+                        <div className="text-2xl font-bold text-accent">{readingStreak}</div>
+                        <div className="text-xs text-muted-foreground">Streak</div>
+                      </div>
+                    </div>
                     <NavLinks />
                     <Button variant="outline" onClick={handleSignOut} className="w-full justify-start">
                       <LogOut className="w-4 h-4 mr-2" />
@@ -227,20 +251,6 @@ const Dashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-10">
-          {/* Welcome Section */}
-          <div className="text-center space-y-3">
-            <h1 className="text-5xl sm:text-6xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent animate-in">
-              Welcome back
-            </h1>
-            <p className="text-muted-foreground text-lg">Track your reading journey and achieve your goals</p>
-          </div>
-
-          {/* Stats Grid */}
-          <DashboardStats
-            booksRead={booksRead}
-            readingStreak={readingStreak}
-          />
-
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Left Column */}
@@ -249,10 +259,11 @@ const Dashboard = () => {
                 Currently Reading
               </h2>
               <CurrentReading
-                bookTitle={currentReading?.bookTitle}
-                bookAuthor={currentReading?.bookAuthor}
-                progress={currentReading?.progress || 0}
-                isPaused={currentReading?.isPaused || false}
+                bookId={currentBook?.id}
+                bookTitle={currentBook?.title}
+                bookAuthor={currentBook?.author}
+                progress={currentProgress}
+                isPaused={false}
                 onResume={handleResumeReading}
                 onPause={handlePauseReading}
               />

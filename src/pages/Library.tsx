@@ -199,14 +199,7 @@ const Library = () => {
                     size="sm"
                     variant="outline"
                     className="flex-1"
-                    onClick={() => {
-                      navigate('/dashboard', { 
-                        state: { 
-                          summary: bookmark.summary.content, 
-                          bookTitle: bookmark.book.title 
-                        } 
-                      });
-                    }}
+                    onClick={() => navigate(`/read/${bookmark.book_id}`)}
                   >
                     <Eye className="w-4 h-4 mr-2" />
                     View
@@ -219,41 +212,7 @@ const Library = () => {
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
-        {/* My Generated Summaries */}
-        {mySummaries.length > 0 && (
-          <div className="mt-16">
-            <h2 className="text-2xl md:text-3xl font-semibold mb-6">My Generated Summaries</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-              {mySummaries.map((item) => (
-                <Card key={item.id} className="p-6 bg-card/50 backdrop-blur-sm border-2 hover:border-accent/50 transition-all duration-300 hover:shadow-lg">
-                  <div className="mb-4">
-                    <h3 className="text-lg font-semibold mb-1 line-clamp-2">{item.books.title}</h3>
-                    {item.books.author && (
-                      <p className="text-sm text-muted-foreground">by {item.books.author}</p>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-4 line-clamp-4">{item.content.substring(0, 200)}...</p>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() =>
-                        navigate('/dashboard', {
-                          state: { summary: item.content, bookTitle: item.books.title },
-                        })
-                      }
-                    >
-                      <Eye className="w-4 h-4 mr-2" /> Read
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-4">Generated {new Date(item.created_at).toLocaleDateString()}</p>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+                </div>
 
                 <p className="text-xs text-muted-foreground mt-4">
                   Saved {new Date(bookmark.created_at).toLocaleDateString()}

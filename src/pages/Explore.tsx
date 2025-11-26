@@ -215,19 +215,8 @@ const Explore = () => {
                     variant="outline"
                     className="flex-1"
                     onClick={() => {
-                      // Persist selection so it survives auth redirects
-                      try {
-                        localStorage.setItem('pendingSummary', summary.content);
-                        localStorage.setItem('pendingBookTitle', summary.books?.title || '');
-                      } catch {}
-
                       if (user) {
-                        navigate('/dashboard', {
-                          state: {
-                            summary: summary.content,
-                            bookTitle: summary.books?.title || ''
-                          }
-                        });
+                        navigate(`/read/${summary.books.id}`);
                       } else {
                         navigate('/auth');
                       }

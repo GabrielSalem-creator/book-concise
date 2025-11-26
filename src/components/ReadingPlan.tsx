@@ -65,7 +65,7 @@ export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
           {books.map((book, idx) => (
             <div
               key={book.id}
-              onClick={() => navigate(`/read/${book.id}`)}
+              onClick={() => navigate(`/read/${book.id}?search=true`)}
               className={`group flex items-start gap-4 p-4 rounded-xl transition-all cursor-pointer hover-lift ${
                 book.status === 'completed'
                   ? 'bg-gradient-to-r from-green-500/10 to-green-600/10 border border-green-500/30'
