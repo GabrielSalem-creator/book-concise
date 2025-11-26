@@ -32,12 +32,91 @@ const ReadBook = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shouldSearch = params.get('search') === 'true';
+    
     if (bookId) {
-      loadBook();
+      if (shouldSearch) {
+        searchAndLoadBook();
+      } else {
+        loadBook();
+      }
       checkBookmark();
       loadReadingSession();
     }
   }, [bookId, user]);
+
+  const searchAndLoadBook = async () => {
+    setIsLoading(true);
+    
+    // First try to load the book directly
+    const { data: existingBook, error: bookError } = await supabase
+      .from('books')
+      .select(`
+        *,
+        summaries (content)
+      `)
+      .eq('id', bookId)
+      .single();
+
+    if (existingBook && existingBook.summaries && existingBook.summaries.length > 0) {
+      setBook(existingBook);
+      const cleanSummary = existingBook.summaries[0].content
+        .replace(/#+\s/g, '')
+        .replace(/[-*_]{2,}/g, '')
+        .replace(/^\s*[-*]\s/gm, '')
+        .replace(/\*\*/g, '')
+        .replace(/__/g, '')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .trim();
+      setSummary(cleanSummary);
+      setIsLoading(false);
+      return;
+    }
+
+    // If no summary exists, search and generate
+    if (existingBook) {
+      toast({
+        title: "Generating summary",
+        description: "Please wait while we generate the book summary...",
+      });
+
+      const { data: summaryData, error: summaryError } = await supabase.functions.invoke('generate-summary', {
+        body: { bookTitle: existingBook.title, bookId: existingBook.id }
+      });
+
+      if (summaryError || !summaryData?.summary) {
+        toast({
+          title: "Error",
+          description: "Failed to generate summary",
+          variant: "destructive",
+        });
+        navigate('/dashboard');
+        return;
+      }
+
+      const cleanSummary = summaryData.summary
+        .replace(/#+\s/g, '')
+        .replace(/[-*_]{2,}/g, '')
+        .replace(/^\s*[-*]\s/gm, '')
+        .replace(/\*\*/g, '')
+        .replace(/__/g, '')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .trim();
+      
+      setBook(existingBook);
+      setSummary(cleanSummary);
+    } else {
+      toast({
+        title: "Error",
+        description: "Book not found",
+        variant: "destructive",
+      });
+      navigate('/dashboard');
+    }
+    
+    setIsLoading(false);
+  };
 
   const loadBook = async () => {
     setIsLoading(true);
@@ -199,14 +278,29 @@ const ReadBook = () => {
       return;
     }
 
+    // Cancel any existing speech
+    window.speechSynthesis.cancel();
+
     const newUtterance = new SpeechSynthesisUtterance(summary);
     newUtterance.rate = 0.9;
     newUtterance.pitch = 1;
     newUtterance.volume = 1;
 
-    const voice = getVoice();
-    if (voice) {
-      newUtterance.voice = voice;
+    // Load voices and select one
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) {
+      // Wait for voices to load
+      window.speechSynthesis.onvoiceschanged = () => {
+        const voice = getVoice();
+        if (voice) {
+          newUtterance.voice = voice;
+        }
+      };
+    } else {
+      const voice = getVoice();
+      if (voice) {
+        newUtterance.voice = voice;
+      }
     }
 
     let lastProgress = 0;
