@@ -74,7 +74,7 @@ const ReadBook = () => {
       return;
     }
 
-    // If no summary exists, search and generate
+    // If book exists but no summary, generate it
     if (existingBook) {
       toast({
         title: "Generating summary",
@@ -106,15 +106,107 @@ const ReadBook = () => {
       
       setBook(existingBook);
       setSummary(cleanSummary);
-    } else {
+      setIsLoading(false);
+      return;
+    }
+
+    // If book doesn't exist at all, search for it using the title from reading plan
+    const { data: planBook } = await supabase
+      .from('reading_plan_books')
+      .select('books(title)')
+      .eq('book_id', bookId)
+      .single();
+
+    if (!planBook?.books?.title) {
       toast({
         title: "Error",
-        description: "Book not found",
+        description: "Book not found in reading plan",
         variant: "destructive",
       });
       navigate('/dashboard');
+      setIsLoading(false);
+      return;
     }
-    
+
+    const bookTitle = planBook.books.title;
+
+    toast({
+      title: "Searching for book",
+      description: `Finding "${bookTitle}"...`,
+    });
+
+    // Search for the PDF
+    const { data: pdfData, error: pdfError } = await supabase.functions.invoke('search-book-pdf', {
+      body: { query: bookTitle }
+    });
+
+    if (pdfError || !pdfData?.pdfUrl) {
+      toast({
+        title: "Error",
+        description: "Could not find book PDF",
+        variant: "destructive",
+      });
+      navigate('/dashboard');
+      setIsLoading(false);
+      return;
+    }
+
+    // Update the book with the PDF URL
+    const { error: updateError } = await supabase
+      .from('books')
+      .update({ pdf_url: pdfData.pdfUrl })
+      .eq('id', bookId);
+
+    if (updateError) {
+      toast({
+        title: "Error",
+        description: "Failed to save book PDF",
+        variant: "destructive",
+      });
+      navigate('/dashboard');
+      setIsLoading(false);
+      return;
+    }
+
+    toast({
+      title: "Generating summary",
+      description: "Please wait while we generate the book summary...",
+    });
+
+    // Generate the summary
+    const { data: summaryData, error: summaryError } = await supabase.functions.invoke('generate-summary', {
+      body: { bookTitle, bookId }
+    });
+
+    if (summaryError || !summaryData?.summary) {
+      toast({
+        title: "Error",
+        description: "Failed to generate summary",
+        variant: "destructive",
+      });
+      navigate('/dashboard');
+      setIsLoading(false);
+      return;
+    }
+
+    const cleanSummary = summaryData.summary
+      .replace(/#+\s/g, '')
+      .replace(/[-*_]{2,}/g, '')
+      .replace(/^\s*[-*]\s/gm, '')
+      .replace(/\*\*/g, '')
+      .replace(/__/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .trim();
+
+    // Load the complete book data
+    const { data: finalBook } = await supabase
+      .from('books')
+      .select('*')
+      .eq('id', bookId)
+      .single();
+
+    setBook(finalBook);
+    setSummary(cleanSummary);
     setIsLoading(false);
   };
 
