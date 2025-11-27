@@ -87,7 +87,7 @@ const Dashboard = () => {
       setActiveGoal(goal);
       setReadingPlanBooks(
         goal.reading_plan_books.map((rpb: any) => ({
-          id: rpb.id,
+          id: rpb.books.id,
           title: rpb.books.title,
           author: rpb.books.author,
           status: rpb.status,
