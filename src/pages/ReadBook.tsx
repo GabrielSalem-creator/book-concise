@@ -87,8 +87,12 @@ const ReadBook = () => {
       });
 
     if (summaryError || !summaryData?.summary) {
-      // Check if it's a credit error
-      if (summaryError && summaryData?.creditsRemaining === 0) {
+      // Check if it's a credit error by looking at the response
+      const errorMessage = summaryData?.error || summaryError?.message || '';
+      const isCreditsError = errorMessage.includes('No credits remaining') || 
+                            summaryData?.creditsRemaining === 0;
+      
+      if (isCreditsError) {
         toast({
           title: "Daily limit reached",
           description: "You've used your 2 daily summary credits. They reset tomorrow!",
@@ -189,8 +193,12 @@ const ReadBook = () => {
     });
 
     if (summaryError || !summaryData?.summary) {
-      // Check if it's a credit error
-      if (summaryError && summaryData?.creditsRemaining === 0) {
+      // Check if it's a credit error by looking at the response
+      const errorMessage = summaryData?.error || summaryError?.message || '';
+      const isCreditsError = errorMessage.includes('No credits remaining') || 
+                            summaryData?.creditsRemaining === 0;
+      
+      if (isCreditsError) {
         toast({
           title: "Daily limit reached",
           description: "You've used your 2 daily summary credits. They reset tomorrow!",
