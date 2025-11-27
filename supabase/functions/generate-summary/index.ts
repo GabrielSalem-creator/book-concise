@@ -38,7 +38,31 @@ serve(async (req) => {
       userId = user?.id;
     }
 
-    // Check user credits if authenticated
+    // FIRST: Check if summary already exists - don't consume credits for existing summaries
+    const { data: existingBook } = await supabase
+      .from('books')
+      .select('id, summaries(id, content)')
+      .eq('title', bookTitle)
+      .maybeSingle();
+
+    // If summary already exists, return it without consuming credits
+    if (existingBook?.summaries && existingBook.summaries.length > 0) {
+      console.log('[generate-summary] Found existing summary, returning without consuming credits');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          summary: existingBook.summaries[0].content,
+          bookId: existingBook.id,
+          summaryId: existingBook.summaries[0].id,
+          existingSummary: true
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // NOW check user credits - only for NEW summary generation
     if (userId) {
       const { data: preferences, error: prefsError } = await supabase
         .from('user_preferences')
@@ -98,30 +122,6 @@ serve(async (req) => {
           );
         }
       }
-    }
-
-    // First, try to find existing book and check for existing summary
-    const { data: existingBook } = await supabase
-      .from('books')
-      .select('id, summaries(id, content)')
-      .eq('title', bookTitle)
-      .maybeSingle();
-
-    // If summary already exists, return it without consuming credits
-    if (existingBook?.summaries && existingBook.summaries.length > 0) {
-      console.log('[generate-summary] Found existing summary, returning without consuming credits');
-      return new Response(
-        JSON.stringify({
-          success: true,
-          summary: existingBook.summaries[0].content,
-          bookId: existingBook.id,
-          summaryId: existingBook.summaries[0].id,
-          existingSummary: true
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
     }
 
     let bookId = existingBook?.id;
