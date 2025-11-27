@@ -30,6 +30,7 @@ const ReadBook = () => {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [readingSessionId, setReadingSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [savedCharPosition, setSavedCharPosition] = useState(0);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -260,6 +261,11 @@ const ReadBook = () => {
     if (data) {
       setReadingSessionId(data.id);
       setProgress(data.progress_percentage || 0);
+      // Restore character position from last_position
+      if (data.last_position) {
+        const charPos = parseInt(data.last_position, 10);
+        setSavedCharPosition(charPos);
+      }
     }
   };
 
@@ -373,7 +379,9 @@ const ReadBook = () => {
     // Cancel any existing speech
     window.speechSynthesis.cancel();
 
-    const newUtterance = new SpeechSynthesisUtterance(summary);
+    // If we have a saved position, start from there
+    const textToRead = savedCharPosition > 0 ? summary.substring(savedCharPosition) : summary;
+    const newUtterance = new SpeechSynthesisUtterance(textToRead);
     newUtterance.rate = 0.9;
     newUtterance.pitch = 1;
     newUtterance.volume = 1;
@@ -398,8 +406,11 @@ const ReadBook = () => {
     let lastProgress = 0;
     newUtterance.onboundary = (event) => {
       if (event.charIndex > 0) {
-        const currentProgress = (event.charIndex / summary.length) * 100;
+        // Calculate actual character position in the full summary
+        const actualCharPos = savedCharPosition + event.charIndex;
+        const currentProgress = (actualCharPos / summary.length) * 100;
         setProgress(currentProgress);
+        setSavedCharPosition(actualCharPos);
         
         if (currentProgress - lastProgress >= 10 && readingSessionId) {
           lastProgress = currentProgress;
@@ -407,6 +418,7 @@ const ReadBook = () => {
             .from('reading_sessions')
             .update({ 
               progress_percentage: currentProgress,
+              last_position: actualCharPos.toString(),
               last_read_at: new Date().toISOString()
             })
             .eq('id', readingSessionId)
@@ -498,6 +510,7 @@ const ReadBook = () => {
     setIsReading(false);
     setIsPaused(false);
     setUtterance(null);
+    setSavedCharPosition(0);
   };
 
   const handleBookmark = async () => {
