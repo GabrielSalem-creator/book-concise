@@ -86,15 +86,24 @@ const ReadBook = () => {
         body: { bookTitle: existingBook.title, bookId: existingBook.id }
       });
 
-      if (summaryError || !summaryData?.summary) {
+    if (summaryError || !summaryData?.summary) {
+      // Check if it's a credit error
+      if (summaryError && summaryData?.creditsRemaining === 0) {
+        toast({
+          title: "Daily limit reached",
+          description: "You've used your 2 daily summary credits. They reset tomorrow!",
+          variant: "destructive",
+        });
+      } else {
         toast({
           title: "Error",
           description: "Failed to generate summary",
           variant: "destructive",
         });
-        navigate('/dashboard');
-        return;
       }
+      navigate('/dashboard');
+      return;
+    }
 
       const cleanSummary = summaryData.summary
         .replace(/#+\s/g, '')
@@ -180,11 +189,20 @@ const ReadBook = () => {
     });
 
     if (summaryError || !summaryData?.summary) {
-      toast({
-        title: "Error",
-        description: "Failed to generate summary",
-        variant: "destructive",
-      });
+      // Check if it's a credit error
+      if (summaryError && summaryData?.creditsRemaining === 0) {
+        toast({
+          title: "Daily limit reached",
+          description: "You've used your 2 daily summary credits. They reset tomorrow!",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to generate summary",
+          variant: "destructive",
+        });
+      }
       navigate('/dashboard');
       setIsLoading(false);
       return;
