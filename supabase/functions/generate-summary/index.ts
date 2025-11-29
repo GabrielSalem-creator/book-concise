@@ -48,7 +48,7 @@ serve(async (req) => {
         .eq('id', inputBookId)
         .maybeSingle();
       existingBook = data;
-      console.log(`[generate-summary] Checked by bookId: ${inputBookId}, found: ${!!existingBook}`);
+      console.log(`[generate-summary] Checked by bookId: ${inputBookId}, found: ${!!existingBook}, summaries: ${JSON.stringify(existingBook?.summaries)}`);
     } else {
       const { data } = await supabase
         .from('books')
