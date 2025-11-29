@@ -12,8 +12,8 @@ serve(async (req) => {
   }
 
   try {
-    const { bookTitle, bookAuthor, pdfUrl } = await req.json();
-    console.log(`[generate-summary] Generating summary for: ${bookTitle}`);
+    const { bookTitle, bookAuthor, pdfUrl, bookId: inputBookId } = await req.json();
+    console.log(`[generate-summary] Generating summary for: ${bookTitle}, bookId: ${inputBookId}`);
 
     if (!bookTitle) {
       throw new Error('Book title is required');
@@ -39,11 +39,25 @@ serve(async (req) => {
     }
 
     // FIRST: Check if summary already exists - don't consume credits for existing summaries
-    const { data: existingBook } = await supabase
-      .from('books')
-      .select('id, summaries(id, content)')
-      .eq('title', bookTitle)
-      .maybeSingle();
+    // Check by bookId first if provided, otherwise by title
+    let existingBook = null;
+    if (inputBookId) {
+      const { data } = await supabase
+        .from('books')
+        .select('id, title, author, summaries(id, content)')
+        .eq('id', inputBookId)
+        .maybeSingle();
+      existingBook = data;
+      console.log(`[generate-summary] Checked by bookId: ${inputBookId}, found: ${!!existingBook}`);
+    } else {
+      const { data } = await supabase
+        .from('books')
+        .select('id, title, author, summaries(id, content)')
+        .eq('title', bookTitle)
+        .maybeSingle();
+      existingBook = data;
+      console.log(`[generate-summary] Checked by title: ${bookTitle}, found: ${!!existingBook}`);
+    }
 
     // If summary already exists, return it without consuming credits
     if (existingBook?.summaries && existingBook.summaries.length > 0) {
