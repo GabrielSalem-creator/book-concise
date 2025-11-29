@@ -150,60 +150,91 @@ Important: Always use the tool to create the reading plan. The tool will handle 
 
     if (goalError) throw goalError;
 
-    // Create or get books and add to reading plan
+    // Create or get books and add to reading plan (only books with summaries)
+    const addedBooks: any[] = [];
+    const skippedBooks: any[] = [];
+
     for (let i = 0; i < planData.books.length; i++) {
       const bookInfo = planData.books[i];
       
-      // Check if book exists
+      // Check if book exists WITH a summary
       let { data: existingBook } = await supabase
         .from('books')
-        .select('id')
+        .select('id, summaries(id)')
         .eq('title', bookInfo.title)
         .eq('author', bookInfo.author)
         .maybeSingle();
 
-      let bookId: string;
+      let bookId: string | null = null;
+      let hasSummary = false;
 
       if (existingBook) {
         bookId = existingBook.id;
+        hasSummary = existingBook.summaries && existingBook.summaries.length > 0;
       } else {
-        // Create new book
-        const { data: newBook, error: bookError } = await supabase
+        // Search for similar books with summaries in database
+        const { data: similarBooks } = await supabase
           .from('books')
-          .insert({
-            title: bookInfo.title,
-            author: bookInfo.author,
-            description: bookInfo.reason
-          })
-          .select()
-          .single();
-
-        if (bookError) throw bookError;
-        bookId = newBook.id;
+          .select('id, title, author, summaries(id)')
+          .ilike('title', `%${bookInfo.title}%`)
+          .limit(1)
+          .maybeSingle();
+        
+        if (similarBooks?.summaries && similarBooks.summaries.length > 0) {
+          bookId = similarBooks.id;
+          hasSummary = true;
+        }
       }
 
-      // Add to reading plan
-      await supabase
-        .from('reading_plan_books')
-        .insert({
-          goal_id: newGoal.id,
-          book_id: bookId,
-          order_index: i,
-          status: 'pending'
-        });
+      // Only add books that have summaries to avoid credit consumption
+      if (bookId && hasSummary) {
+        await supabase
+          .from('reading_plan_books')
+          .insert({
+            goal_id: newGoal.id,
+            book_id: bookId,
+            order_index: addedBooks.length,
+            status: 'pending'
+          });
+        addedBooks.push(bookInfo);
+      } else {
+        skippedBooks.push(bookInfo);
+        console.log(`[chat] Skipped book without summary: ${bookInfo.title}`);
+      }
+    }
+
+    // If no books were added (all lack summaries), delete the goal
+    if (addedBooks.length === 0) {
+      await supabase.from('goals').delete().eq('id', newGoal.id);
+      
+      const noSummariesResponse = `I couldn't create a reading plan because none of the recommended books have summaries available yet. Please try searching for and generating summaries for these books first using the search bar:\n\n${planData.books.map((b: any, i: number) => `${i + 1}. "${b.title}" by ${b.author}`).join('\n')}`;
+      
+      await supabase.from('chat_messages').insert([
+        { user_id: user.id, role: 'user', content: message },
+        { user_id: user.id, role: 'assistant', content: noSummariesResponse }
+      ]);
+
+      return new Response(JSON.stringify({ response: noSummariesResponse, goalCreated: false }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Create concise response
-    const bookList = planData.books
+    const bookList = addedBooks
       .map((b: any, i: number) => `${i + 1}. "${b.title}" by ${b.author}`)
       .join('\n');
 
-    const aiResponse = `Great! I've created your reading plan: "${planData.goal_title}"
+    let aiResponse = `Great! I've created your reading plan: "${planData.goal_title}"
 
 Here are your books:
 ${bookList}
 
-Check your Dashboard to start reading and track your progress!`;
+Check your Dashboard to start reading!`;
+
+    if (skippedBooks.length > 0) {
+      const skippedList = skippedBooks.map((b: any) => `"${b.title}" by ${b.author}`).join(', ');
+      aiResponse += `\n\n⚠️ Note: ${skippedBooks.length} book(s) were skipped because they don't have summaries yet: ${skippedList}. You can search for them to generate summaries.`;
+    }
 
     // Save conversation
     await supabase.from('chat_messages').insert([
