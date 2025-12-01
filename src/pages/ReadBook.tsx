@@ -259,6 +259,8 @@ const ReadBook = () => {
     }
 
     setBook(data);
+    
+    // If summary exists, use it (no credits consumed)
     if (data.summaries && data.summaries.length > 0) {
       const cleanSummary = data.summaries[0].content
         .replace(/#+\s/g, '')
@@ -269,7 +271,53 @@ const ReadBook = () => {
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
         .trim();
       setSummary(cleanSummary);
+      setIsLoading(false);
+      return;
     }
+
+    // No summary exists - generate one (will consume credits)
+    toast({
+      title: "Generating summary",
+      description: "Please wait while we generate the book summary...",
+    });
+
+    const { data: summaryData, error: summaryError } = await supabase.functions.invoke('generate-summary', {
+      body: { bookTitle: data.title, bookAuthor: data.author, bookId: data.id }
+    });
+
+    if (summaryError || !summaryData?.summary) {
+      const errorMessage = summaryData?.error || summaryError?.message || '';
+      const isCreditsError = errorMessage.includes('No credits remaining') || 
+                            summaryData?.creditsRemaining === 0;
+      
+      if (isCreditsError) {
+        toast({
+          title: "Daily limit reached",
+          description: "You've used your 2 daily summary credits. They reset tomorrow!",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to generate summary",
+          variant: "destructive",
+        });
+      }
+      navigate('/dashboard');
+      setIsLoading(false);
+      return;
+    }
+
+    const cleanSummary = summaryData.summary
+      .replace(/#+\s/g, '')
+      .replace(/[-*_]{2,}/g, '')
+      .replace(/^\s*[-*]\s/gm, '')
+      .replace(/\*\*/g, '')
+      .replace(/__/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .trim();
+    
+    setSummary(cleanSummary);
     setIsLoading(false);
   };
 
