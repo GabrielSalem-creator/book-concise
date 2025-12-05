@@ -148,20 +148,20 @@ const Dashboard = () => {
 
   const NavLinks = () => (
     <>
-      <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
-        <Moon className="w-4 h-4 mr-2" />
+      <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')} aria-label="Go to Dashboard">
+        <Moon className="w-4 h-4 mr-2" aria-hidden="true" />
         <span className="hidden sm:inline">Dashboard</span>
       </Button>
-      <Button variant="ghost" size="sm" onClick={() => navigate('/library')}>
-        <LibraryIcon className="w-4 h-4 mr-2" />
+      <Button variant="ghost" size="sm" onClick={() => navigate('/library')} aria-label="Go to Library">
+        <LibraryIcon className="w-4 h-4 mr-2" aria-hidden="true" />
         <span className="hidden sm:inline">Library</span>
       </Button>
-      <Button variant="ghost" size="sm" onClick={() => navigate('/explore')}>
-        <Compass className="w-4 h-4 mr-2" />
+      <Button variant="ghost" size="sm" onClick={() => navigate('/explore')} aria-label="Go to Explore">
+        <Compass className="w-4 h-4 mr-2" aria-hidden="true" />
         <span className="hidden sm:inline">Explore</span>
       </Button>
-      <Button variant="ghost" size="sm" onClick={() => navigate('/chat')}>
-        <MessageSquare className="w-4 h-4 mr-2" />
+      <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} aria-label="Go to Chat">
+        <MessageSquare className="w-4 h-4 mr-2" aria-hidden="true" />
         <span className="hidden sm:inline">Chat</span>
       </Button>
     </>
@@ -169,39 +169,53 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
+      {/* Skip to content link for screen readers */}
+      <a 
+        href="#main-content" 
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md"
+      >
+        Skip to main content
+      </a>
+
       {/* Header with Stats */}
-      <header className="sticky top-0 z-50 glass-morphism border-b border-primary/20">
+      <header className="sticky top-0 z-50 glass-morphism border-b border-primary/20" role="banner">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <Moon className="w-7 h-7 text-primary glow-effect" />
+                  <Moon className="w-7 h-7 text-primary glow-effect" aria-hidden="true" />
                 </div>
-                <span className="text-xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
+                <h1 className="text-xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
                   Nocturn
-                </span>
+                </h1>
               </div>
               
               {/* Stats in Header */}
-              <div className="hidden lg:flex items-center gap-4">
+              <div className="hidden lg:flex items-center gap-4" role="status" aria-label="Reading statistics">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg glass-morphism border border-primary/20">
                   <span className="text-sm text-muted-foreground">Books:</span>
-                  <span className="text-lg font-bold text-primary">{booksRead}</span>
+                  <span className="text-lg font-bold text-primary" aria-label={`${booksRead} books completed`}>{booksRead}</span>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg glass-morphism border border-accent/20">
                   <span className="text-sm text-muted-foreground">Streak:</span>
-                  <span className="text-lg font-bold text-accent">{readingStreak}</span>
+                  <span className="text-lg font-bold text-accent" aria-label={`${readingStreak} day reading streak`}>{readingStreak}</span>
                 </div>
               </div>
             </div>
 
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-2">
+            <nav className="hidden md:flex items-center gap-2" aria-label="Main navigation">
               <NavLinks />
               <ThemeToggle />
-              <Button variant="outline" size="icon" onClick={handleSignOut} className="hover-lift">
-                <LogOut className="w-4 h-4" />
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={handleSignOut} 
+                className="hover-lift"
+                aria-label="Sign out of your account"
+              >
+                <LogOut className="w-4 h-4" aria-hidden="true" />
               </Button>
             </nav>
 
@@ -210,28 +224,33 @@ const Dashboard = () => {
               <ThemeToggle />
               <Sheet>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <Menu className="w-5 h-5" />
+                  <Button variant="ghost" size="icon" aria-label="Open navigation menu">
+                    <Menu className="w-5 h-5" aria-hidden="true" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent className="glass-morphism">
-                  <div className="flex flex-col gap-4 mt-8">
-                    <div className="flex gap-3 mb-4">
+                <SheetContent className="glass-morphism" aria-label="Navigation menu">
+                  <nav className="flex flex-col gap-4 mt-8" aria-label="Mobile navigation">
+                    <div className="flex gap-3 mb-4" role="status" aria-label="Reading statistics">
                       <div className="flex-1 text-center p-3 rounded-lg glass-morphism border border-primary/20">
-                        <div className="text-2xl font-bold text-primary">{booksRead}</div>
+                        <div className="text-2xl font-bold text-primary" aria-label={`${booksRead} books completed`}>{booksRead}</div>
                         <div className="text-xs text-muted-foreground">Books</div>
                       </div>
                       <div className="flex-1 text-center p-3 rounded-lg glass-morphism border border-accent/20">
-                        <div className="text-2xl font-bold text-accent">{readingStreak}</div>
+                        <div className="text-2xl font-bold text-accent" aria-label={`${readingStreak} day streak`}>{readingStreak}</div>
                         <div className="text-xs text-muted-foreground">Streak</div>
                       </div>
                     </div>
                     <NavLinks />
-                    <Button variant="outline" onClick={handleSignOut} className="w-full justify-start">
-                      <LogOut className="w-4 h-4 mr-2" />
+                    <Button 
+                      variant="outline" 
+                      onClick={handleSignOut} 
+                      className="w-full justify-start"
+                      aria-label="Sign out of your account"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" aria-hidden="true" />
                       Sign Out
                     </Button>
-                  </div>
+                  </nav>
                 </SheetContent>
               </Sheet>
             </div>
@@ -250,13 +269,13 @@ const Dashboard = () => {
       </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main id="main-content" className="container mx-auto px-4 sm:px-6 lg:px-8 py-8" role="main">
         <div className="space-y-10">
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Left Column */}
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            <section className="space-y-6" aria-labelledby="currently-reading-heading">
+              <h2 id="currently-reading-heading" className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 Currently Reading
               </h2>
               <CurrentReading
@@ -268,28 +287,28 @@ const Dashboard = () => {
                 onResume={handleResumeReading}
                 onPause={handlePauseReading}
               />
-            </div>
+            </section>
 
             {/* Right Column */}
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-accent to-secondary bg-clip-text text-transparent">
+            <section className="space-y-6" aria-labelledby="reading-plan-heading">
+              <h2 id="reading-plan-heading" className="text-2xl font-bold bg-gradient-to-r from-accent to-secondary bg-clip-text text-transparent">
                 Reading Plan
               </h2>
               <ReadingPlan
                 goalTitle={activeGoal?.title}
                 books={readingPlanBooks}
               />
-            </div>
+            </section>
           </div>
 
           {/* Summary Display (Full Width) */}
           {summary && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            <section className="animate-in fade-in slide-in-from-bottom-4 duration-500" aria-labelledby="summary-heading">
+              <h2 id="summary-heading" className="text-2xl font-bold mb-4 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 Generated Summary
               </h2>
               <SummaryDisplay summary={summary} bookTitle={bookTitle} />
-            </div>
+            </section>
           )}
         </div>
       </main>
