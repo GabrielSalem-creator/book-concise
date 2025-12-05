@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { BookOpen, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu } from "lucide-react";
+import { Moon, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BookSearch } from "@/components/BookSearch";
 import { SummaryDisplay } from "@/components/SummaryDisplay";
 import { CurrentReading } from "@/components/CurrentReading";
 import { ReadingPlan } from "@/components/ReadingPlan";
+import { ReadingPlanPopup } from "@/components/ReadingPlanPopup";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -148,7 +149,7 @@ const Dashboard = () => {
   const NavLinks = () => (
     <>
       <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
-        <BookOpen className="w-4 h-4 mr-2" />
+        <Moon className="w-4 h-4 mr-2" />
         <span className="hidden sm:inline">Dashboard</span>
       </Button>
       <Button variant="ghost" size="sm" onClick={() => navigate('/library')}>
@@ -175,10 +176,10 @@ const Dashboard = () => {
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <BookOpen className="w-7 h-7 text-primary glow-effect" />
+                  <Moon className="w-7 h-7 text-primary glow-effect" />
                 </div>
                 <span className="text-xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
-                  BookConcise
+                  Nocturn
                 </span>
               </div>
               
@@ -292,6 +293,9 @@ const Dashboard = () => {
           )}
         </div>
       </main>
+
+      {/* Reading Plan Popup for new users */}
+      <ReadingPlanPopup />
     </div>
   );
 };

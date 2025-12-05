@@ -453,138 +453,183 @@ const ReadBook = () => {
     // Cancel any existing speech
     window.speechSynthesis.cancel();
 
-    // If we have a saved position, start from there
-    const textToRead = savedCharPosition > 0 ? summary.substring(savedCharPosition) : summary;
-    const newUtterance = new SpeechSynthesisUtterance(textToRead);
-    newUtterance.rate = 0.9;
-    newUtterance.pitch = 1;
-    newUtterance.volume = 1;
-
-    // Load voices and select one
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length === 0) {
-      // Wait for voices to load
-      window.speechSynthesis.onvoiceschanged = () => {
-        const voice = getVoice();
-        if (voice) {
-          newUtterance.voice = voice;
-        }
-      };
-    } else {
-      const voice = getVoice();
+    // Helper function to start speech with voice
+    const startSpeech = (voice: SpeechSynthesisVoice | null) => {
+      // If we have a saved position, start from there
+      const startPos = savedCharPosition > 0 ? savedCharPosition : 0;
+      const textToRead = startPos > 0 ? summary.substring(startPos) : summary;
+      
+      const newUtterance = new SpeechSynthesisUtterance(textToRead);
+      newUtterance.rate = 0.9;
+      newUtterance.pitch = 1;
+      newUtterance.volume = 1;
+      
       if (voice) {
         newUtterance.voice = voice;
       }
-    }
 
-    let lastProgress = 0;
-    newUtterance.onboundary = (event) => {
-      if (event.charIndex > 0) {
-        // Calculate actual character position in the full summary
-        const actualCharPos = savedCharPosition + event.charIndex;
-        const currentProgress = (actualCharPos / summary.length) * 100;
-        setProgress(currentProgress);
-        setSavedCharPosition(actualCharPos);
-        
-        if (currentProgress - lastProgress >= 10 && readingSessionId) {
-          lastProgress = currentProgress;
-          supabase
+      let lastProgress = startPos > 0 ? (startPos / summary.length) * 100 : 0;
+      
+      newUtterance.onboundary = (event) => {
+        if (event.charIndex >= 0) {
+          // Calculate actual character position in the full summary
+          const actualCharPos = startPos + event.charIndex;
+          const currentProgress = (actualCharPos / summary.length) * 100;
+          setProgress(currentProgress);
+          setSavedCharPosition(actualCharPos);
+          
+          if (currentProgress - lastProgress >= 10 && readingSessionId) {
+            lastProgress = currentProgress;
+            supabase
+              .from('reading_sessions')
+              .update({ 
+                progress_percentage: currentProgress,
+                last_position: actualCharPos.toString(),
+                last_read_at: new Date().toISOString()
+              })
+              .eq('id', readingSessionId)
+              .then();
+          }
+        }
+      };
+
+      newUtterance.onend = async () => {
+        setIsReading(false);
+        setIsPaused(false);
+        setProgress(100);
+        setSavedCharPosition(0);
+
+        if (readingSessionId) {
+          await supabase
             .from('reading_sessions')
             .update({ 
-              progress_percentage: currentProgress,
-              last_position: actualCharPos.toString(),
-              last_read_at: new Date().toISOString()
-            })
-            .eq('id', readingSessionId)
-            .then();
-        }
-      }
-    };
-
-    newUtterance.onend = async () => {
-      setIsReading(false);
-      setIsPaused(false);
-      setProgress(100);
-
-      if (readingSessionId) {
-        await supabase
-          .from('reading_sessions')
-          .update({ 
-            progress_percentage: 100,
-            completed_at: new Date().toISOString()
-          })
-          .eq('id', readingSessionId);
-
-        const { data: planBook } = await supabase
-          .from('reading_plan_books')
-          .select('id, goal_id')
-          .eq('book_id', bookId)
-          .eq('status', 'reading')
-          .maybeSingle();
-
-        if (planBook) {
-          await supabase
-            .from('reading_plan_books')
-            .update({ 
-              status: 'completed',
+              progress_percentage: 100,
+              last_position: '0',
               completed_at: new Date().toISOString()
             })
-            .eq('id', planBook.id);
+            .eq('id', readingSessionId);
 
-          const { data: allPlanBooks } = await supabase
+          const { data: planBook } = await supabase
             .from('reading_plan_books')
-            .select('status')
-            .eq('goal_id', planBook.goal_id);
+            .select('id, goal_id')
+            .eq('book_id', bookId)
+            .eq('status', 'reading')
+            .maybeSingle();
 
-          const allCompleted = allPlanBooks?.every(b => b.status === 'completed');
-          if (allCompleted) {
+          if (planBook) {
             await supabase
-              .from('goals')
+              .from('reading_plan_books')
               .update({ 
                 status: 'completed',
                 completed_at: new Date().toISOString()
               })
-              .eq('id', planBook.goal_id);
+              .eq('id', planBook.id);
+
+            const { data: allPlanBooks } = await supabase
+              .from('reading_plan_books')
+              .select('status')
+              .eq('goal_id', planBook.goal_id);
+
+            const allCompleted = allPlanBooks?.every(b => b.status === 'completed');
+            if (allCompleted) {
+              await supabase
+                .from('goals')
+                .update({ 
+                  status: 'completed',
+                  completed_at: new Date().toISOString()
+                })
+                .eq('id', planBook.goal_id);
+            }
           }
+
+          toast({
+            title: "Book completed!",
+            description: "This book has been marked as completed.",
+          });
         }
+      };
 
-        toast({
-          title: "Book completed!",
-          description: "This book has been marked as completed.",
-        });
-      }
-    };
+      newUtterance.onerror = (event) => {
+        // Only show error for actual failures, not interruptions
+        if (event.error !== 'interrupted' && event.error !== 'canceled') {
+          setIsReading(false);
+          setIsPaused(false);
+          toast({
+            title: "Audio Error",
+            description: "Could not play audio. Try selecting a different voice.",
+            variant: "destructive",
+          });
+        }
+      };
 
-    newUtterance.onerror = () => {
-      setIsReading(false);
+      setUtterance(newUtterance);
+      window.speechSynthesis.speak(newUtterance);
+      setIsReading(true);
       setIsPaused(false);
-      toast({
-        title: "Error",
-        description: "Failed to read summary",
-        variant: "destructive",
-      });
     };
 
-    setUtterance(newUtterance);
-    window.speechSynthesis.speak(newUtterance);
-    setIsReading(true);
-    setIsPaused(false);
-  };
-
-  const handlePause = () => {
-    if (utterance && isReading) {
-      window.speechSynthesis.pause();
-      setIsPaused(true);
-      setIsReading(false);
+    // Load voices and start speech
+    let voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) {
+      // Wait for voices to load
+      window.speechSynthesis.onvoiceschanged = () => {
+        voices = window.speechSynthesis.getVoices();
+        const voice = getVoice();
+        startSpeech(voice);
+      };
+      // Also set a timeout in case onvoiceschanged doesn't fire
+      setTimeout(() => {
+        if (!isReading) {
+          voices = window.speechSynthesis.getVoices();
+          const voice = getVoice();
+          startSpeech(voice);
+        }
+      }, 100);
+    } else {
+      const voice = getVoice();
+      startSpeech(voice);
     }
   };
 
-  const handleStop = () => {
+  const handlePause = async () => {
+    if (isReading) {
+      window.speechSynthesis.pause();
+      setIsPaused(true);
+      setIsReading(false);
+      
+      // Save current position to database
+      if (readingSessionId) {
+        await supabase
+          .from('reading_sessions')
+          .update({ 
+            progress_percentage: progress,
+            last_position: savedCharPosition.toString(),
+            last_read_at: new Date().toISOString()
+          })
+          .eq('id', readingSessionId);
+      }
+    }
+  };
+
+  const handleStop = async () => {
     window.speechSynthesis.cancel();
     setIsReading(false);
     setIsPaused(false);
     setUtterance(null);
     setSavedCharPosition(0);
+    setProgress(0);
+    
+    // Reset position in database
+    if (readingSessionId) {
+      await supabase
+        .from('reading_sessions')
+        .update({ 
+          progress_percentage: 0,
+          last_position: '0',
+          last_read_at: new Date().toISOString()
+        })
+        .eq('id', readingSessionId);
+    }
   };
 
   const handleBookmark = async () => {
