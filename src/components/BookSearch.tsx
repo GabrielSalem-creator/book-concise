@@ -200,18 +200,18 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
   };
 
   return (
-    <Card className="p-4 md:p-8 bg-card/50 backdrop-blur-sm border-2 hover:shadow-lg transition-all duration-300">
+    <Card className="p-4 md:p-8 bg-card/50 backdrop-blur-sm border-2 hover:shadow-lg transition-all duration-300" role="search">
       <div className="flex flex-col items-center space-y-4 md:space-y-6">
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center space-x-2 md:space-x-3">
-            <BookOpen className="w-6 h-6 md:w-8 md:h-8 text-primary" />
+            <BookOpen className="w-6 h-6 md:w-8 md:h-8 text-primary" aria-hidden="true" />
             <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               Search for a Book
             </h2>
           </div>
           {credits !== null && (
-            <div className="flex items-center space-x-2 bg-primary/10 px-3 py-1 rounded-full">
-              <Sparkles className="w-4 h-4 text-primary" />
+            <div className="flex items-center space-x-2 bg-primary/10 px-3 py-1 rounded-full" role="status" aria-label={`${credits} credits remaining`}>
+              <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
               <span className="text-sm font-semibold text-primary">{credits} credits</span>
             </div>
           )}
@@ -219,25 +219,29 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
 
         <div className="w-full max-w-xl space-y-4">
           <div className="flex flex-col sm:flex-row gap-2">
+            <label htmlFor="book-search-input" className="sr-only">Enter book name to search</label>
             <Input
+              id="book-search-input"
               placeholder="Enter book name..."
               value={bookName}
               onChange={(e) => setBookName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSearch()}
               disabled={isLoading}
               className="flex-1 h-11 md:h-12 text-base md:text-lg border-2 focus:border-primary transition-colors"
+              aria-describedby={status ? "search-status" : undefined}
             />
             <Button
               onClick={handleSearch}
               disabled={isLoading}
               size="lg"
               className="h-11 md:h-12 px-6 md:px-8 w-full sm:w-auto bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-300"
+              aria-label={isLoading ? "Searching for book" : "Search for book"}
             >
               {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
               ) : (
                 <>
-                  <Search className="w-5 h-5 sm:mr-2" />
+                  <Search className="w-5 h-5 sm:mr-2" aria-hidden="true" />
                   <span className="hidden sm:inline">Search</span>
                 </>
               )}
@@ -245,8 +249,8 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
           </div>
 
           {status && (
-            <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground animate-pulse">
-              <Loader2 className="w-4 h-4 animate-spin" />
+            <div id="search-status" className="flex items-center justify-center space-x-2 text-sm text-muted-foreground animate-pulse" role="status" aria-live="polite">
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
               <span>{status}</span>
             </div>
           )}
