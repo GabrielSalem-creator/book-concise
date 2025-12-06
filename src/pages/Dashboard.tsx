@@ -150,19 +150,19 @@ const Dashboard = () => {
     <>
       <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')} aria-label="Go to Dashboard">
         <Moon className="w-4 h-4 mr-2" aria-hidden="true" />
-        <span className="hidden sm:inline">Dashboard</span>
+        Dashboard
       </Button>
       <Button variant="ghost" size="sm" onClick={() => navigate('/library')} aria-label="Go to Library">
         <LibraryIcon className="w-4 h-4 mr-2" aria-hidden="true" />
-        <span className="hidden sm:inline">Library</span>
+        Library
       </Button>
       <Button variant="ghost" size="sm" onClick={() => navigate('/explore')} aria-label="Go to Explore">
         <Compass className="w-4 h-4 mr-2" aria-hidden="true" />
-        <span className="hidden sm:inline">Explore</span>
+        Explore
       </Button>
       <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} aria-label="Go to Chat">
         <MessageSquare className="w-4 h-4 mr-2" aria-hidden="true" />
-        <span className="hidden sm:inline">Chat</span>
+        Chat
       </Button>
     </>
   );
@@ -210,12 +210,13 @@ const Dashboard = () => {
               <ThemeToggle />
               <Button 
                 variant="outline" 
-                size="icon" 
+                size="sm" 
                 onClick={handleSignOut} 
                 className="hover-lift"
                 aria-label="Sign out of your account"
               >
-                <LogOut className="w-4 h-4" aria-hidden="true" />
+                <LogOut className="w-4 h-4 mr-2" aria-hidden="true" />
+                Sign Out
               </Button>
             </nav>
 
