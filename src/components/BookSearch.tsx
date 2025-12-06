@@ -238,11 +238,14 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
               aria-label={isLoading ? "Searching for book" : "Search for book"}
             >
               {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" aria-hidden="true" />
+                  Searching...
+                </>
               ) : (
                 <>
-                  <Search className="w-5 h-5 sm:mr-2" aria-hidden="true" />
-                  <span className="hidden sm:inline">Search</span>
+                  <Search className="w-5 h-5 mr-2" aria-hidden="true" />
+                  Search
                 </>
               )}
             </Button>
