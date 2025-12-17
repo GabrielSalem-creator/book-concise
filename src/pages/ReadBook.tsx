@@ -32,11 +32,18 @@ const ReadBook = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [savedCharPosition, setSavedCharPosition] = useState(0);
 
+  // Cleanup: Stop audio when leaving the page
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const shouldSearch = params.get('search') === 'true';
     
-    if (bookId) {
+    if (bookId && user) {
       if (shouldSearch) {
         searchAndLoadBook();
       } else {
@@ -44,8 +51,51 @@ const ReadBook = () => {
       }
       checkBookmark();
       loadReadingSession();
+      // Create reading session immediately when page loads
+      createInitialSession();
     }
   }, [bookId, user]);
+
+  const createInitialSession = async () => {
+    if (!user || !bookId) return;
+
+    // Check if there's already an active session for this book
+    const { data: existingSession } = await supabase
+      .from('reading_sessions')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('book_id', bookId)
+      .is('completed_at', null)
+      .maybeSingle();
+
+    if (existingSession) {
+      setReadingSessionId(existingSession.id);
+      return;
+    }
+
+    // Complete other active sessions
+    await supabase
+      .from('reading_sessions')
+      .update({ completed_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .is('completed_at', null)
+      .neq('book_id', bookId);
+
+    // Create new session
+    const { data: newSession } = await supabase
+      .from('reading_sessions')
+      .insert({
+        user_id: user.id,
+        book_id: bookId,
+        progress_percentage: 0,
+      })
+      .select()
+      .single();
+
+    if (newSession) {
+      setReadingSessionId(newSession.id);
+    }
+  };
 
   const searchAndLoadBook = async () => {
     setIsLoading(true);
@@ -701,51 +751,56 @@ const ReadBook = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-5xl">
-        <div className="space-y-8">
+      <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-4xl">
+        <div className="space-y-4 sm:space-y-6 lg:space-y-8">
           {/* Header */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-start gap-3 sm:gap-4">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => navigate('/dashboard')}
-              className="hover-lift"
+              className="hover-lift shrink-0 h-9 w-9 sm:h-10 sm:w-10"
+              aria-label="Go back to dashboard"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </Button>
-            <div className="flex-1">
-              <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent break-words">
                 {book.title}
               </h1>
               {book.author && (
-                <p className="text-muted-foreground mt-1 text-lg">{book.author}</p>
+                <p className="text-sm sm:text-base text-muted-foreground mt-1 truncate">{book.author}</p>
               )}
             </div>
           </div>
 
           {/* Controls Card */}
-          <Card className="glass-morphism p-8 border-primary/20 hover-lift glow-effect">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-3">
+          <Card className="glass-morphism p-4 sm:p-6 lg:p-8 border-primary/20 hover-lift glow-effect">
+            <div className="space-y-4 sm:space-y-6">
+              {/* Main Controls - Stack on mobile */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                {/* Play/Pause Controls */}
+                <div className="flex items-center gap-2 sm:gap-3">
                   {isPaused || !isReading ? (
                     <Button
-                      size="lg"
+                      size="default"
                       onClick={handlePlay}
-                      className="gap-2 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-opacity px-8 glow-effect"
+                      className="gap-2 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-opacity px-4 sm:px-6 lg:px-8 glow-effect flex-1 sm:flex-none"
+                      aria-label={isPaused ? 'Resume reading' : 'Start reading'}
                     >
-                      <Play className="w-5 h-5" />
-                      {isPaused ? 'Resume' : 'Play'}
+                      <Play className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span>{isPaused ? 'Resume' : 'Play'}</span>
                     </Button>
                   ) : (
                     <Button
-                      size="lg"
+                      size="default"
                       variant="secondary"
                       onClick={handlePause}
-                      className="gap-2 px-8"
+                      className="gap-2 px-4 sm:px-6 lg:px-8 flex-1 sm:flex-none"
+                      aria-label="Pause reading"
                     >
-                      <Pause className="w-5 h-5" />
-                      Pause
+                      <Pause className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span>Pause</span>
                     </Button>
                   )}
                   
@@ -754,17 +809,19 @@ const ReadBook = () => {
                       variant="outline"
                       onClick={handleStop}
                       className="gap-2 hover-lift"
+                      aria-label="Stop reading"
                     >
                       <StopCircle className="w-4 h-4" />
-                      Stop
+                      <span className="hidden sm:inline">Stop</span>
                     </Button>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                {/* Secondary Controls */}
+                <div className="flex items-center justify-end gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" className="hover-lift">
+                      <Button variant="outline" size="icon" className="hover-lift h-9 w-9 sm:h-10 sm:w-10" aria-label="Voice settings">
                         <Settings className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -785,7 +842,8 @@ const ReadBook = () => {
                     variant="outline"
                     size="icon"
                     onClick={handleBookmark}
-                    className={`hover-lift ${isBookmarked ? "bg-primary/20 text-primary border-primary/30" : ""}`}
+                    className={`hover-lift h-9 w-9 sm:h-10 sm:w-10 ${isBookmarked ? "bg-primary/20 text-primary border-primary/30" : ""}`}
+                    aria-label={isBookmarked ? "Remove bookmark" : "Add bookmark"}
                   >
                     <BookmarkPlus className="w-4 h-4" />
                   </Button>
@@ -794,20 +852,22 @@ const ReadBook = () => {
                     variant="outline"
                     size="icon"
                     onClick={handleShare}
-                    className="hover-lift"
+                    className="hover-lift h-9 w-9 sm:h-10 sm:w-10"
+                    aria-label="Copy summary to clipboard"
                   >
                     <Share2 className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
 
+              {/* Progress Bar */}
               {(isReading || isPaused || progress > 0) && (
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex justify-between text-xs sm:text-sm">
                     <span className="text-muted-foreground">Progress</span>
                     <span className="font-semibold text-primary">{Math.round(progress)}%</span>
                   </div>
-                  <div className="relative h-3 bg-muted rounded-full overflow-hidden">
+                  <div className="relative h-2 sm:h-3 bg-muted rounded-full overflow-hidden">
                     <div 
                       className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-secondary transition-all duration-500 glow-effect"
                       style={{ width: `${progress}%` }}
@@ -819,9 +879,9 @@ const ReadBook = () => {
           </Card>
 
           {/* Summary Content */}
-          <Card className="glass-morphism p-8 border-primary/20">
-            <div className="prose prose-lg max-w-none prose-invert">
-              <div className="whitespace-pre-wrap leading-relaxed text-foreground/90 text-lg">
+          <Card className="glass-morphism p-4 sm:p-6 lg:p-8 border-primary/20">
+            <div className="prose prose-sm sm:prose-base lg:prose-lg max-w-none dark:prose-invert">
+              <div className="whitespace-pre-wrap leading-relaxed text-foreground/90 text-sm sm:text-base lg:text-lg break-words">
                 {summary || "No summary available for this book."}
               </div>
             </div>
