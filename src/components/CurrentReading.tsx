@@ -45,21 +45,21 @@ export const CurrentReading = ({
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && bookId && navigate(`/read/${bookId}`)}
     >
-      <div className="p-6">
-        <div className="flex items-start gap-4">
-          <div className="w-16 h-20 rounded-lg bg-gradient-to-br from-primary via-accent to-secondary flex items-center justify-center shadow-lg glow-effect" aria-hidden="true">
-            <BookOpen className="w-8 h-8 text-white" />
+      <div className="p-4 sm:p-6">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <div className="w-12 h-16 sm:w-16 sm:h-20 rounded-lg bg-gradient-to-br from-primary via-accent to-secondary flex items-center justify-center shadow-lg glow-effect shrink-0" aria-hidden="true">
+            <BookOpen className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-bold truncate bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">{bookTitle}</h3>
-            <p className="text-sm text-muted-foreground truncate">{bookAuthor}</p>
-            <div className="mt-4 space-y-2">
-              <div className="flex items-center justify-between text-sm">
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <h3 className="text-base sm:text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent line-clamp-2 break-words">{bookTitle}</h3>
+            <p className="text-xs sm:text-sm text-muted-foreground truncate mt-0.5">{bookAuthor}</p>
+            <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
+              <div className="flex items-center justify-between text-xs sm:text-sm">
                 <span className="text-muted-foreground">Progress</span>
                 <span className="font-semibold text-primary" aria-label={`${Math.round(progress)} percent complete`}>{Math.round(progress)}%</span>
               </div>
               <div 
-                className="relative h-2 bg-muted rounded-full overflow-hidden" 
+                className="relative h-1.5 sm:h-2 bg-muted rounded-full overflow-hidden" 
                 role="progressbar" 
                 aria-valuenow={Math.round(progress)} 
                 aria-valuemin={0} 
@@ -74,12 +74,12 @@ export const CurrentReading = ({
             </div>
           </div>
         </div>
-        <div className="mt-6">
+        <div className="mt-4 sm:mt-6">
           <Button 
-            className="w-full gap-2 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-opacity glow-effect"
+            className="w-full gap-2 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-opacity glow-effect text-sm sm:text-base h-9 sm:h-10"
             aria-label={`Continue reading ${bookTitle}`}
           >
-            <Play className="w-4 h-4" aria-hidden="true" />
+            <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4" aria-hidden="true" />
             Continue Reading
           </Button>
         </div>
