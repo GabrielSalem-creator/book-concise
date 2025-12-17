@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Loader2, BookOpen, Sparkles } from "lucide-react";
+import { Search, Loader2, BookOpen, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -10,9 +10,10 @@ import { useNavigate } from "react-router-dom";
 interface BookSearchProps {
   onSummaryGenerated: (summary: string, bookTitle: string) => void;
   initialBookName?: string;
+  compact?: boolean;
 }
 
-export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSearchProps) => {
+export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact = false }: BookSearchProps) => {
   const [bookName, setBookName] = useState(initialBookName);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState("");
@@ -199,65 +200,110 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "" }: BookSea
     }
   };
 
+  // Compact version for sticky header
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2" role="search">
+        <label htmlFor="book-search-compact" className="sr-only">Enter book name to search</label>
+        <Input
+          id="book-search-compact"
+          placeholder="Enter book name..."
+          value={bookName}
+          onChange={(e) => setBookName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSearch()}
+          disabled={isLoading}
+          className="flex-1 h-10 text-sm border-primary/20 bg-background/50"
+          aria-describedby={status ? "search-status-compact" : undefined}
+        />
+        {credits !== null && (
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary/10 text-xs" role="status" aria-label={`${credits} credits remaining`}>
+            <Sparkles className="w-3 h-3 text-primary" aria-hidden="true" />
+            <span className="font-semibold text-primary">{credits}</span>
+          </div>
+        )}
+        <Button
+          onClick={handleSearch}
+          disabled={isLoading}
+          size="sm"
+          className="h-10 px-4 bg-gradient-to-r from-primary to-primary/90"
+          aria-label={isLoading ? "Searching for book" : "Search for book"}
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <>
+              <Search className="w-4 h-4 sm:mr-2" aria-hidden="true" />
+              <span className="hidden sm:inline">Search</span>
+            </>
+          )}
+        </Button>
+        {status && (
+          <div id="search-status-compact" className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground animate-pulse" role="status" aria-live="polite">
+            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+            <span>{status}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Full version
   return (
-    <Card className="p-4 md:p-8 bg-card/50 backdrop-blur-sm border-2 hover:shadow-lg transition-all duration-300" role="search">
-      <div className="flex flex-col items-center space-y-4 md:space-y-6">
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center space-x-2 md:space-x-3">
-            <BookOpen className="w-6 h-6 md:w-8 md:h-8 text-primary" aria-hidden="true" />
-            <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+    <Card className="p-4 sm:p-5 bg-card/50 backdrop-blur-sm border hover:shadow-lg transition-all duration-300" role="search">
+      <div className="flex flex-col space-y-3 sm:space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-primary" aria-hidden="true" />
+            <h2 className="text-base sm:text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               Search for a Book
             </h2>
           </div>
           {credits !== null && (
-            <div className="flex items-center space-x-2 bg-primary/10 px-3 py-1 rounded-full" role="status" aria-label={`${credits} credits remaining`}>
-              <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
-              <span className="text-sm font-semibold text-primary">{credits} credits</span>
+            <div className="flex items-center gap-1.5 bg-primary/10 px-2 py-1 rounded-full" role="status" aria-label={`${credits} credits remaining`}>
+              <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 text-primary" aria-hidden="true" />
+              <span className="text-xs sm:text-sm font-semibold text-primary">{credits} credits</span>
             </div>
           )}
         </div>
 
-        <div className="w-full max-w-xl space-y-4">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <label htmlFor="book-search-input" className="sr-only">Enter book name to search</label>
-            <Input
-              id="book-search-input"
-              placeholder="Enter book name..."
-              value={bookName}
-              onChange={(e) => setBookName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSearch()}
-              disabled={isLoading}
-              className="flex-1 h-11 md:h-12 text-base md:text-lg border-2 focus:border-primary transition-colors"
-              aria-describedby={status ? "search-status" : undefined}
-            />
-            <Button
-              onClick={handleSearch}
-              disabled={isLoading}
-              size="lg"
-              className="h-11 md:h-12 px-6 md:px-8 w-full sm:w-auto bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-300"
-              aria-label={isLoading ? "Searching for book" : "Search for book"}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" aria-hidden="true" />
-                  Searching...
-                </>
-              ) : (
-                <>
-                  <Search className="w-5 h-5 mr-2" aria-hidden="true" />
-                  Search
-                </>
-              )}
-            </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <label htmlFor="book-search-input" className="sr-only">Enter book name to search</label>
+          <Input
+            id="book-search-input"
+            placeholder="Enter book name..."
+            value={bookName}
+            onChange={(e) => setBookName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSearch()}
+            disabled={isLoading}
+            className="flex-1 h-10 sm:h-11 text-sm sm:text-base border focus:border-primary transition-colors"
+            aria-describedby={status ? "search-status" : undefined}
+          />
+          <Button
+            onClick={handleSearch}
+            disabled={isLoading}
+            className="h-10 sm:h-11 px-4 sm:px-6 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-300"
+            aria-label={isLoading ? "Searching for book" : "Search for book"}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                <span className="text-sm">Searching...</span>
+              </>
+            ) : (
+              <>
+                <Search className="w-4 h-4 mr-2" aria-hidden="true" />
+                <span className="text-sm">Search</span>
+              </>
+            )}
+          </Button>
+        </div>
+
+        {status && (
+          <div id="search-status" className="flex items-center justify-center gap-2 text-xs sm:text-sm text-muted-foreground animate-pulse" role="status" aria-live="polite">
+            <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" aria-hidden="true" />
+            <span>{status}</span>
           </div>
-
-          {status && (
-            <div id="search-status" className="flex items-center justify-center space-x-2 text-sm text-muted-foreground animate-pulse" role="status" aria-live="polite">
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-              <span>{status}</span>
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </Card>
   );
