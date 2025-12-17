@@ -1,8 +1,21 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Circle, BookOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2, Circle, BookOpen, Trash2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNavigate } from "react-router-dom";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Book {
   id: string;
@@ -13,21 +26,24 @@ interface Book {
 }
 
 interface ReadingPlanProps {
+  goalId?: string;
   goalTitle?: string;
   books: Book[];
+  onDeletePlan?: () => void;
 }
 
-export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
+export const ReadingPlan = ({ goalId, goalTitle, books, onDeletePlan }: ReadingPlanProps) => {
   const navigate = useNavigate();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   if (!goalTitle || books.length === 0) {
     return (
-      <Card className="p-8 text-center border-dashed border-2 border-border/50 bg-muted/20" role="status" aria-label="No active reading plan">
-        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-          <BookOpen className="w-8 h-8 text-primary" aria-hidden="true" />
+      <Card className="p-6 sm:p-8 text-center border-dashed border-2 border-border/50 bg-muted/20" role="status" aria-label="No active reading plan">
+        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3 sm:mb-4">
+          <BookOpen className="w-6 h-6 sm:w-8 sm:h-8 text-primary" aria-hidden="true" />
         </div>
-        <h3 className="text-lg font-semibold mb-2">No active reading plan</h3>
-        <p className="text-sm text-muted-foreground">
+        <h3 className="text-base sm:text-lg font-semibold mb-2">No active reading plan</h3>
+        <p className="text-xs sm:text-sm text-muted-foreground">
           Visit the Chat tab to set a goal and get personalized book recommendations
         </p>
       </Card>
@@ -37,24 +53,61 @@ export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
   const completedCount = books.filter(b => b.status === 'completed').length;
   const progressPercentage = (completedCount / books.length) * 100;
 
+  const handleDeleteConfirm = () => {
+    setDeleteDialogOpen(false);
+    onDeletePlan?.();
+  };
+
   return (
     <Card className="overflow-hidden glass-morphism border-primary/20 glow-effect" role="region" aria-label={`Reading plan: ${goalTitle}`}>
-      <div className="p-6 border-b border-primary/20 bg-gradient-to-r from-primary/10 to-accent/10">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="text-xl font-bold mb-1 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+      <div className="p-4 sm:p-6 border-b border-primary/20 bg-gradient-to-r from-primary/10 to-accent/10">
+        <div className="flex items-start justify-between gap-2 mb-3 sm:mb-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base sm:text-lg lg:text-xl font-bold mb-1 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent truncate">
               {goalTitle}
             </h3>
-            <p className="text-sm text-muted-foreground" aria-live="polite">
+            <p className="text-xs sm:text-sm text-muted-foreground" aria-live="polite">
               {completedCount} of {books.length} books completed
             </p>
           </div>
-          <Badge variant="secondary" className="font-semibold bg-primary/20 text-primary border-primary/30" aria-label={`${Math.round(progressPercentage)} percent of plan completed`}>
-            {Math.round(progressPercentage)}%
-          </Badge>
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge variant="secondary" className="font-semibold bg-primary/20 text-primary border-primary/30 text-xs" aria-label={`${Math.round(progressPercentage)} percent of plan completed`}>
+              {Math.round(progressPercentage)}%
+            </Badge>
+            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  aria-label="Delete reading plan"
+                >
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent aria-describedby="delete-plan-description">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Reading Plan?</AlertDialogTitle>
+                  <AlertDialogDescription id="delete-plan-description">
+                    This will permanently delete your reading plan "{goalTitle}" and all its progress. You can create a new plan anytime in the Chat tab.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel aria-label="Cancel deletion">Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDeleteConfirm}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    aria-label="Confirm delete reading plan"
+                  >
+                    Delete Plan
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
         <div 
-          className="relative w-full h-3 bg-muted rounded-full overflow-hidden"
+          className="relative w-full h-2 sm:h-3 bg-muted rounded-full overflow-hidden"
           role="progressbar"
           aria-valuenow={Math.round(progressPercentage)}
           aria-valuemin={0}
@@ -67,9 +120,9 @@ export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
           />
         </div>
       </div>
-      <ScrollArea className="h-[300px]">
-        <ul className="p-6 space-y-3" role="list" aria-label="Books in reading plan">
-          {books.map((book, idx) => (
+      <ScrollArea className="h-[200px] sm:h-[250px] lg:h-[300px]">
+        <ul className="p-3 sm:p-4 lg:p-6 space-y-2 sm:space-y-3" role="list" aria-label="Books in reading plan">
+          {books.map((book) => (
             <li
               key={book.id}
               onClick={() => navigate(`/read/${book.id}`)}
@@ -77,7 +130,7 @@ export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
               tabIndex={0}
               role="button"
               aria-label={`${book.title} by ${book.author}, status: ${book.status === 'completed' ? 'completed' : book.status === 'reading' ? 'currently reading' : 'pending'}. Click to read.`}
-              className={`group flex items-start gap-4 p-4 rounded-xl transition-all cursor-pointer hover-lift ${
+              className={`group flex items-start gap-2 sm:gap-3 lg:gap-4 p-3 sm:p-4 rounded-xl transition-all cursor-pointer hover-lift ${
                 book.status === 'completed'
                   ? 'bg-gradient-to-r from-green-500/10 to-green-600/10 border border-green-500/30'
                   : book.status === 'reading'
@@ -85,7 +138,7 @@ export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
                   : 'bg-muted/20 border border-border/30 hover:bg-muted/30'
               }`}
             >
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 transition-all ${
+              <div className={`flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full shrink-0 transition-all ${
                 book.status === 'completed' 
                   ? 'bg-green-500/20 group-hover:bg-green-500/30' 
                   : book.status === 'reading'
@@ -93,22 +146,22 @@ export const ReadingPlan = ({ goalTitle, books }: ReadingPlanProps) => {
                   : 'bg-muted/30 group-hover:bg-muted/40'
               }`} aria-hidden="true">
                 {book.status === 'completed' ? (
-                  <CheckCircle2 className="w-5 h-5 text-green-400" />
+                  <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
                 ) : book.status === 'reading' ? (
-                  <BookOpen className="w-5 h-5 text-primary" />
+                  <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 ) : (
-                  <Circle className="w-5 h-5 text-muted-foreground" />
+                  <Circle className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm leading-tight mb-1 truncate group-hover:text-primary transition-colors">
+                <p className="font-semibold text-xs sm:text-sm leading-tight mb-0.5 sm:mb-1 truncate group-hover:text-primary transition-colors">
                   {book.title}
                 </p>
-                <p className="text-xs text-muted-foreground truncate">{book.author}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{book.author}</p>
               </div>
               <Badge
                 variant={book.status === 'completed' ? 'default' : 'outline'}
-                className={`shrink-0 text-xs ${
+                className={`shrink-0 text-[10px] sm:text-xs ${
                   book.status === 'completed' 
                     ? 'bg-green-500/20 text-green-400 border-green-500/30' 
                     : book.status === 'reading'
