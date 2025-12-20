@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { Search, Loader2, BookOpen, Sparkles, X } from "lucide-react";
+import { Search, Loader2, BookOpen, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -13,10 +14,20 @@ interface BookSearchProps {
   compact?: boolean;
 }
 
+// Progress steps for visual feedback
+const PROGRESS_STEPS = [
+  { status: "Checking for existing summaries...", progress: 10 },
+  { status: "Searching for book PDFs...", progress: 30 },
+  { status: "Validating PDF...", progress: 50 },
+  { status: "Generating AI summary...", progress: 70 },
+  { status: "Finalizing...", progress: 90 },
+];
+
 export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact = false }: BookSearchProps) => {
   const [bookName, setBookName] = useState(initialBookName);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [progressValue, setProgressValue] = useState(0);
   const [credits, setCredits] = useState<number | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -62,6 +73,15 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
     fetchCredits();
   }, []);
 
+  // Helper to update status and progress
+  const updateProgress = (statusText: string) => {
+    setStatus(statusText);
+    const step = PROGRESS_STEPS.find(s => s.status === statusText);
+    if (step) {
+      setProgressValue(step.progress);
+    }
+  };
+
   const handleSearch = async () => {
     if (!bookName.trim()) {
       toast({
@@ -73,7 +93,8 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
     }
 
     setIsLoading(true);
-    setStatus("Checking for existing summaries...");
+    setProgressValue(0);
+    updateProgress("Checking for existing summaries...");
 
     try {
       // Step 1: Check if summary already exists
@@ -100,15 +121,17 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
           description: "Opening book...",
         });
 
+        setProgressValue(100);
         navigate(`/read/${existingBook.id}`);
         setBookName("");
         setStatus("");
+        setProgressValue(0);
         setIsLoading(false);
         return;
       }
 
       // Step 2: No existing summary found, search for PDF URLs
-      setStatus("Searching for book PDFs...");
+      updateProgress("Searching for book PDFs...");
       
       const { data: searchData, error: searchError } = await supabase.functions.invoke(
         'search-book-pdf',
@@ -123,7 +146,7 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
       }
 
       console.log(`Found ${searchData.pdfUrls.length} PDF URLs`);
-      setStatus("Validating PDF...");
+      updateProgress("Validating PDF...");
 
       // Step 3: Validate first PDF
       const { data: pdfData, error: pdfError } = await supabase.functions.invoke(
@@ -138,7 +161,7 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
         throw new Error('Failed to validate PDF');
       }
 
-      setStatus("Generating AI summary...");
+      updateProgress("Generating AI summary...");
 
       // Step 4: Generate summary
       const { data: summaryData, error: summaryError } = await supabase.functions.invoke(
@@ -167,10 +190,7 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
         ? "Using existing summary - no credits used" 
         : `Summary generated! ${summaryData.creditsRemaining ?? credits ?? 0} credits remaining`;
 
-      toast({
-        title: "Success!",
-        description: creditsMessage,
-      });
+      updateProgress("Finalizing...");
 
       // Find the book ID and navigate to read page
       const { data: newBook } = await supabase
@@ -184,8 +204,16 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
         navigate(`/read/${newBook.id}`);
       }
       
+      setProgressValue(100);
+      
+      toast({
+        title: "Success!",
+        description: creditsMessage,
+      });
+
       setBookName("");
       setStatus("");
+      setProgressValue(0);
 
     } catch (error) {
       console.error('Error:', error);
@@ -195,6 +223,7 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
         variant: "destructive",
       });
       setStatus("");
+      setProgressValue(0);
     } finally {
       setIsLoading(false);
     }
@@ -237,10 +266,11 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
             </>
           )}
         </Button>
-        {status && (
-          <div id="search-status-compact" className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground animate-pulse" role="status" aria-live="polite">
-            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-            <span>{status}</span>
+        {/* Compact progress bar */}
+        {isLoading && status && (
+          <div id="search-status-compact" className="flex items-center gap-2 flex-1 max-w-[200px]" role="status" aria-live="polite">
+            <Progress value={progressValue} className="h-1.5 flex-1" />
+            <span className="text-xs text-primary font-medium whitespace-nowrap">{progressValue}%</span>
           </div>
         )}
       </div>
@@ -298,10 +328,20 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
           </Button>
         </div>
 
-        {status && (
-          <div id="search-status" className="flex items-center justify-center gap-2 text-xs sm:text-sm text-muted-foreground animate-pulse" role="status" aria-live="polite">
-            <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" aria-hidden="true" />
-            <span>{status}</span>
+        {/* Progress indicator during search */}
+        {isLoading && (
+          <div className="space-y-2" role="status" aria-live="polite">
+            <div className="flex items-center justify-between text-xs sm:text-sm">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" aria-hidden="true" />
+                <span>{status || "Processing..."}</span>
+              </div>
+              <span className="font-semibold text-primary">{progressValue}%</span>
+            </div>
+            <Progress value={progressValue} className="h-2 sm:h-2.5" />
+            <p className="text-xs text-muted-foreground/70 text-center">
+              This may take up to a minute for new books
+            </p>
           </div>
         )}
       </div>

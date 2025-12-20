@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle } from "lucide-react";
+import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/AuthProvider";
@@ -31,6 +31,31 @@ const ReadBook = () => {
   const [readingSessionId, setReadingSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [savedCharPosition, setSavedCharPosition] = useState(0);
+  const [ttsInitialized, setTtsInitialized] = useState(false);
+  const [isSeeking, setIsSeeking] = useState(false);
+  
+  // Ref to track if we're in iOS WebView
+  const isIOSWebView = useRef(
+    typeof navigator !== 'undefined' && 
+    /iPhone|iPad|iPod/.test(navigator.userAgent) && 
+    !(navigator as any).standalone
+  );
+
+  // Initialize TTS on first user interaction (required for iOS WebView)
+  const initializeTTS = useCallback(() => {
+    if (ttsInitialized) return;
+    
+    // Create a silent utterance to unlock TTS
+    const silentUtterance = new SpeechSynthesisUtterance('');
+    silentUtterance.volume = 0;
+    window.speechSynthesis.speak(silentUtterance);
+    window.speechSynthesis.cancel();
+    
+    // Pre-load voices
+    window.speechSynthesis.getVoices();
+    
+    setTtsInitialized(true);
+  }, [ttsInitialized]);
 
   // Cleanup: Stop audio when leaving the page
   useEffect(() => {
@@ -38,6 +63,23 @@ const ReadBook = () => {
       window.speechSynthesis.cancel();
     };
   }, []);
+  
+  // Initialize TTS on mount with user gesture for iOS
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      initializeTTS();
+      document.removeEventListener('touchstart', handleFirstInteraction);
+      document.removeEventListener('click', handleFirstInteraction);
+    };
+    
+    document.addEventListener('touchstart', handleFirstInteraction, { once: true });
+    document.addEventListener('click', handleFirstInteraction, { once: true });
+    
+    return () => {
+      document.removeEventListener('touchstart', handleFirstInteraction);
+      document.removeEventListener('click', handleFirstInteraction);
+    };
+  }, [initializeTTS]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -682,6 +724,46 @@ const ReadBook = () => {
     }
   };
 
+  // Seek to a specific position in the audio
+  const handleSeek = async (newProgress: number[]) => {
+    if (!summary) return;
+    
+    const targetProgress = newProgress[0];
+    const newCharPosition = Math.floor((targetProgress / 100) * summary.length);
+    
+    // Stop current speech
+    window.speechSynthesis.cancel();
+    setIsReading(false);
+    setIsPaused(false);
+    setUtterance(null);
+    
+    // Update state
+    setProgress(targetProgress);
+    setSavedCharPosition(newCharPosition);
+    
+    // Save position to database
+    if (readingSessionId) {
+      await supabase
+        .from('reading_sessions')
+        .update({ 
+          progress_percentage: targetProgress,
+          last_position: newCharPosition.toString(),
+          last_read_at: new Date().toISOString()
+        })
+        .eq('id', readingSessionId);
+    }
+  };
+
+  // Skip forward/backward by a percentage
+  const handleSkip = (direction: 'forward' | 'backward') => {
+    const skipAmount = 10; // 10% skip
+    let newProgress = direction === 'forward' 
+      ? Math.min(100, progress + skipAmount)
+      : Math.max(0, progress - skipAmount);
+    
+    handleSeek([newProgress]);
+  };
+
   const handleBookmark = async () => {
     if (!user || !bookId) {
       toast({
@@ -777,52 +859,97 @@ const ReadBook = () => {
           {/* Controls Card */}
           <Card className="glass-morphism p-4 sm:p-6 lg:p-8 border-primary/20 hover-lift glow-effect">
             <div className="space-y-4 sm:space-y-6">
+              {/* Seekable Progress Slider - Always show when there's content */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs sm:text-sm">
+                  <span className="text-muted-foreground">Progress</span>
+                  <span className="font-semibold text-primary">{Math.round(progress)}%</span>
+                </div>
+                
+                {/* Skip Controls + Slider */}
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleSkip('backward')}
+                    className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
+                    aria-label="Skip backward 10%"
+                    disabled={progress <= 0}
+                  >
+                    <SkipBack className="w-4 h-4" />
+                  </Button>
+                  
+                  <div className="flex-1 relative touch-pan-x">
+                    <Slider
+                      value={[progress]}
+                      onValueChange={handleSeek}
+                      max={100}
+                      step={1}
+                      className="w-full cursor-pointer"
+                      aria-label="Seek through the audio"
+                    />
+                  </div>
+                  
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleSkip('forward')}
+                    className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
+                    aria-label="Skip forward 10%"
+                    disabled={progress >= 100}
+                  >
+                    <SkipForward className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
               {/* Main Controls - Stack on mobile */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                 {/* Play/Pause Controls */}
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3">
                   {isPaused || !isReading ? (
                     <Button
-                      size="default"
+                      size="lg"
                       onClick={handlePlay}
-                      className="gap-2 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-opacity px-4 sm:px-6 lg:px-8 glow-effect flex-1 sm:flex-none"
+                      className="gap-2 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-opacity px-6 sm:px-8 h-12 sm:h-14 glow-effect min-w-[140px]"
                       aria-label={isPaused ? 'Resume reading' : 'Start reading'}
                     >
-                      <Play className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <span>{isPaused ? 'Resume' : 'Play'}</span>
+                      <Play className="w-5 h-5 sm:w-6 sm:h-6" />
+                      <span className="text-base sm:text-lg">{isPaused ? 'Resume' : 'Play'}</span>
                     </Button>
                   ) : (
                     <Button
-                      size="default"
+                      size="lg"
                       variant="secondary"
                       onClick={handlePause}
-                      className="gap-2 px-4 sm:px-6 lg:px-8 flex-1 sm:flex-none"
+                      className="gap-2 px-6 sm:px-8 h-12 sm:h-14 min-w-[140px]"
                       aria-label="Pause reading"
                     >
-                      <Pause className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <span>Pause</span>
+                      <Pause className="w-5 h-5 sm:w-6 sm:h-6" />
+                      <span className="text-base sm:text-lg">Pause</span>
                     </Button>
                   )}
                   
-                  {(isReading || isPaused) && (
+                  {(isReading || isPaused || progress > 0) && (
                     <Button
                       variant="outline"
+                      size="lg"
                       onClick={handleStop}
-                      className="gap-2 hover-lift"
-                      aria-label="Stop reading"
+                      className="gap-2 hover-lift h-12 sm:h-14 px-4"
+                      aria-label="Stop and reset"
                     >
-                      <StopCircle className="w-4 h-4" />
-                      <span className="hidden sm:inline">Stop</span>
+                      <StopCircle className="w-5 h-5" />
+                      <span className="hidden sm:inline">Reset</span>
                     </Button>
                   )}
                 </div>
 
                 {/* Secondary Controls */}
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex items-center justify-center sm:justify-end gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" className="hover-lift h-9 w-9 sm:h-10 sm:w-10" aria-label="Voice settings">
-                        <Settings className="w-4 h-4" />
+                      <Button variant="outline" size="icon" className="hover-lift h-10 w-10 sm:h-11 sm:w-11" aria-label="Voice settings">
+                        <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="glass-morphism">
@@ -842,39 +969,23 @@ const ReadBook = () => {
                     variant="outline"
                     size="icon"
                     onClick={handleBookmark}
-                    className={`hover-lift h-9 w-9 sm:h-10 sm:w-10 ${isBookmarked ? "bg-primary/20 text-primary border-primary/30" : ""}`}
+                    className={`hover-lift h-10 w-10 sm:h-11 sm:w-11 ${isBookmarked ? "bg-primary/20 text-primary border-primary/30" : ""}`}
                     aria-label={isBookmarked ? "Remove bookmark" : "Add bookmark"}
                   >
-                    <BookmarkPlus className="w-4 h-4" />
+                    <BookmarkPlus className="w-4 h-4 sm:w-5 sm:h-5" />
                   </Button>
 
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={handleShare}
-                    className="hover-lift h-9 w-9 sm:h-10 sm:w-10"
+                    className="hover-lift h-10 w-10 sm:h-11 sm:w-11"
                     aria-label="Copy summary to clipboard"
                   >
-                    <Share2 className="w-4 h-4" />
+                    <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
                   </Button>
                 </div>
               </div>
-
-              {/* Progress Bar */}
-              {(isReading || isPaused || progress > 0) && (
-                <div className="space-y-2 sm:space-y-3">
-                  <div className="flex justify-between text-xs sm:text-sm">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="font-semibold text-primary">{Math.round(progress)}%</span>
-                  </div>
-                  <div className="relative h-2 sm:h-3 bg-muted rounded-full overflow-hidden">
-                    <div 
-                      className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-secondary transition-all duration-500 glow-effect"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           </Card>
 
