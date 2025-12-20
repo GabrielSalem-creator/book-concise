@@ -45,16 +45,28 @@ const ReadBook = () => {
   const initializeTTS = useCallback(() => {
     if (ttsInitialized) return;
     
-    // Create a silent utterance to unlock TTS
-    const silentUtterance = new SpeechSynthesisUtterance('');
-    silentUtterance.volume = 0;
-    window.speechSynthesis.speak(silentUtterance);
-    window.speechSynthesis.cancel();
-    
-    // Pre-load voices
-    window.speechSynthesis.getVoices();
-    
-    setTtsInitialized(true);
+    try {
+      // For iOS WebView, we need to trigger speech synthesis with user gesture
+      const silentUtterance = new SpeechSynthesisUtterance(' ');
+      silentUtterance.volume = 0.01; // Very quiet but not silent (iOS quirk)
+      silentUtterance.rate = 10; // Fast to complete quickly
+      
+      // Some iOS versions need the utterance to actually complete
+      silentUtterance.onend = () => {
+        window.speechSynthesis.cancel();
+      };
+      
+      window.speechSynthesis.speak(silentUtterance);
+      
+      // Pre-load voices with a slight delay for iOS
+      setTimeout(() => {
+        window.speechSynthesis.getVoices();
+      }, 100);
+      
+      setTtsInitialized(true);
+    } catch (e) {
+      console.warn('TTS initialization failed:', e);
+    }
   }, [ttsInitialized]);
 
   // Cleanup: Stop audio when leaving the page
@@ -492,34 +504,62 @@ const ReadBook = () => {
   const getVoice = () => {
     const voices = window.speechSynthesis.getVoices();
     
-    const femaleVoices = voices.filter(voice => 
-      voice.name.toLowerCase().includes('female') || 
-      voice.name.toLowerCase().includes('woman') ||
-      voice.name.includes('Samantha') ||
-      voice.name.includes('Victoria') ||
-      voice.name.includes('Karen') ||
-      voice.name.includes('Zira')
+    // Prioritize high-quality voices (premium/enhanced voices)
+    const premiumVoiceNames = [
+      // iOS Premium Voices
+      'Samantha', 'Karen', 'Daniel', 'Moira', 'Tessa', 'Rishi', 'Veena',
+      // macOS Premium Voices  
+      'Alex', 'Ava', 'Allison', 'Susan', 'Tom', 'Oliver', 'Kate',
+      // Windows Premium Voices
+      'Zira', 'David', 'Mark', 'Hazel', 'George', 'Susan',
+      // Google Premium Voices
+      'Google US English', 'Google UK English Female', 'Google UK English Male',
+      // Android Voices
+      'English United States', 'English United Kingdom'
+    ];
+    
+    // Filter for high-quality English voices first
+    const englishVoices = voices.filter(v => 
+      v.lang.startsWith('en') || v.lang === 'en-US' || v.lang === 'en-GB'
     );
     
-    const maleVoices = voices.filter(voice => 
-      voice.name.toLowerCase().includes('male') || 
-      voice.name.toLowerCase().includes('man') ||
-      voice.name.includes('Daniel') ||
-      voice.name.includes('Alex') ||
-      voice.name.includes('Fred') ||
-      voice.name.includes('David')
-    );
+    // Find premium voices that match gender preference
+    const findPremiumVoice = (gender: 'male' | 'female' | 'any') => {
+      const genderKeywords = {
+        female: ['Samantha', 'Karen', 'Ava', 'Allison', 'Susan', 'Zira', 'Kate', 'Hazel', 'Moira', 'Tessa', 'Veena', 'Female'],
+        male: ['Daniel', 'Alex', 'David', 'Tom', 'Oliver', 'Mark', 'George', 'Rishi', 'Male']
+      };
+      
+      // First try premium voices
+      for (const premiumName of premiumVoiceNames) {
+        const match = englishVoices.find(v => v.name.includes(premiumName));
+        if (match) {
+          if (gender === 'any') return match;
+          const keywords = genderKeywords[gender];
+          if (keywords.some(k => match.name.includes(k))) return match;
+        }
+      }
+      
+      // Fallback to any English voice with gender match
+      if (gender !== 'any') {
+        const keywords = genderKeywords[gender];
+        const genderMatch = englishVoices.find(v => 
+          keywords.some(k => v.name.toLowerCase().includes(k.toLowerCase()))
+        );
+        if (genderMatch) return genderMatch;
+      }
+      
+      // Final fallback: first English voice or any voice
+      return englishVoices[0] || voices[0] || null;
+    };
 
-    if (selectedVoice === "female" && femaleVoices.length > 0) {
-      return femaleVoices[Math.floor(Math.random() * femaleVoices.length)];
-    } else if (selectedVoice === "male" && maleVoices.length > 0) {
-      return maleVoices[Math.floor(Math.random() * maleVoices.length)];
+    if (selectedVoice === "female") {
+      return findPremiumVoice('female');
+    } else if (selectedVoice === "male") {
+      return findPremiumVoice('male');
     } else {
-      const useFemale = Math.random() > 0.5;
-      const selectedVoices = useFemale ? femaleVoices : maleVoices;
-      return selectedVoices.length > 0 
-        ? selectedVoices[Math.floor(Math.random() * selectedVoices.length)]
-        : null;
+      // Random: pick best available
+      return findPremiumVoice('any');
     }
   };
 
@@ -601,14 +641,15 @@ const ReadBook = () => {
             })
             .eq('id', readingSessionId);
 
+          // Check if this book is part of a reading plan
           const { data: planBook } = await supabase
             .from('reading_plan_books')
             .select('id, goal_id')
             .eq('book_id', bookId)
-            .eq('status', 'reading')
             .maybeSingle();
 
           if (planBook) {
+            // Mark book as completed in the plan
             await supabase
               .from('reading_plan_books')
               .update({ 
@@ -617,6 +658,7 @@ const ReadBook = () => {
               })
               .eq('id', planBook.id);
 
+            // Check if all books in the plan are completed
             const { data: allPlanBooks } = await supabase
               .from('reading_plan_books')
               .select('status')
@@ -632,12 +674,28 @@ const ReadBook = () => {
                 })
                 .eq('id', planBook.goal_id);
             }
-          }
 
-          toast({
-            title: "Book completed!",
-            description: "This book has been marked as completed.",
-          });
+            toast({
+              title: "Book completed! 🎉",
+              description: "Great job! Returning to dashboard...",
+            });
+            
+            // Redirect to dashboard after a short delay
+            setTimeout(() => {
+              navigate('/dashboard');
+            }, 1500);
+          } else {
+            // Book not in a plan, just show completion message
+            toast({
+              title: "Book completed! 🎉",
+              description: "Great job finishing this book!",
+            });
+            
+            // Redirect to dashboard
+            setTimeout(() => {
+              navigate('/dashboard');
+            }, 1500);
+          }
         }
       };
 
