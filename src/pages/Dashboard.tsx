@@ -7,6 +7,7 @@ import { SummaryDisplay } from "@/components/SummaryDisplay";
 import { CurrentReading } from "@/components/CurrentReading";
 import { ReadingPlan } from "@/components/ReadingPlan";
 import { ReadingPlanPopup } from "@/components/ReadingPlanPopup";
+import { AccountSettings } from "@/components/AccountSettings";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -260,6 +261,7 @@ const Dashboard = () => {
             <nav className="hidden lg:flex items-center gap-1" aria-label="Main navigation">
               <NavLinks />
               <ThemeToggle />
+              <AccountSettings />
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -275,6 +277,7 @@ const Dashboard = () => {
             {/* Mobile Navigation */}
             <div className="flex lg:hidden items-center gap-1.5">
               <ThemeToggle />
+              <AccountSettings />
               <Sheet>
                 <SheetTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Open navigation menu">
