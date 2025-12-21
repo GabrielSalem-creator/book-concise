@@ -631,72 +631,8 @@ const ReadBook = () => {
         setProgress(100);
         setSavedCharPosition(0);
 
-        if (readingSessionId) {
-          await supabase
-            .from('reading_sessions')
-            .update({ 
-              progress_percentage: 100,
-              last_position: '0',
-              completed_at: new Date().toISOString()
-            })
-            .eq('id', readingSessionId);
-
-          // Check if this book is part of a reading plan
-          const { data: planBook } = await supabase
-            .from('reading_plan_books')
-            .select('id, goal_id')
-            .eq('book_id', bookId)
-            .maybeSingle();
-
-          if (planBook) {
-            // Mark book as completed in the plan
-            await supabase
-              .from('reading_plan_books')
-              .update({ 
-                status: 'completed',
-                completed_at: new Date().toISOString()
-              })
-              .eq('id', planBook.id);
-
-            // Check if all books in the plan are completed
-            const { data: allPlanBooks } = await supabase
-              .from('reading_plan_books')
-              .select('status')
-              .eq('goal_id', planBook.goal_id);
-
-            const allCompleted = allPlanBooks?.every(b => b.status === 'completed');
-            if (allCompleted) {
-              await supabase
-                .from('goals')
-                .update({ 
-                  status: 'completed',
-                  completed_at: new Date().toISOString()
-                })
-                .eq('id', planBook.goal_id);
-            }
-
-            toast({
-              title: "Book completed! 🎉",
-              description: "Great job! Returning to dashboard...",
-            });
-            
-            // Redirect to dashboard after a short delay
-            setTimeout(() => {
-              navigate('/dashboard');
-            }, 1500);
-          } else {
-            // Book not in a plan, just show completion message
-            toast({
-              title: "Book completed! 🎉",
-              description: "Great job finishing this book!",
-            });
-            
-            // Redirect to dashboard
-            setTimeout(() => {
-              navigate('/dashboard');
-            }, 1500);
-          }
-        }
+        // Handle book completion and redirect
+        await handleBookCompletion();
       };
 
       newUtterance.onerror = (event) => {
@@ -782,6 +718,69 @@ const ReadBook = () => {
     }
   };
 
+  // Handle book completion - mark as finished and redirect
+  const handleBookCompletion = async () => {
+    if (!readingSessionId || !bookId) return;
+
+    // Mark session as completed
+    await supabase
+      .from('reading_sessions')
+      .update({ 
+        progress_percentage: 100,
+        last_position: '0',
+        completed_at: new Date().toISOString()
+      })
+      .eq('id', readingSessionId);
+
+    // Check if this book is part of a reading plan
+    const { data: planBook } = await supabase
+      .from('reading_plan_books')
+      .select('id, goal_id')
+      .eq('book_id', bookId)
+      .maybeSingle();
+
+    if (planBook) {
+      // Mark book as completed in the plan
+      await supabase
+        .from('reading_plan_books')
+        .update({ 
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', planBook.id);
+
+      // Check if all books in the plan are completed
+      const { data: allPlanBooks } = await supabase
+        .from('reading_plan_books')
+        .select('status')
+        .eq('goal_id', planBook.goal_id);
+
+      const allCompleted = allPlanBooks?.every(b => b.status === 'completed');
+      if (allCompleted) {
+        await supabase
+          .from('goals')
+          .update({ 
+            status: 'completed',
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', planBook.goal_id);
+      }
+
+      toast({
+        title: "Book completed! 🎉",
+        description: "Great job! Returning to dashboard...",
+      });
+    } else {
+      toast({
+        title: "Book completed! 🎉",
+        description: "Great job finishing this book!",
+      });
+    }
+
+    // Redirect to dashboard immediately
+    navigate('/dashboard');
+  };
+
   // Seek to a specific position in the audio
   const handleSeek = async (newProgress: number[]) => {
     if (!summary) return;
@@ -798,6 +797,12 @@ const ReadBook = () => {
     // Update state
     setProgress(targetProgress);
     setSavedCharPosition(newCharPosition);
+    
+    // If reached 100%, complete the book
+    if (targetProgress >= 100) {
+      await handleBookCompletion();
+      return;
+    }
     
     // Save position to database
     if (readingSessionId) {
