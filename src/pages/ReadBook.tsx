@@ -722,6 +722,8 @@ const ReadBook = () => {
   const handleBookCompletion = async () => {
     if (!readingSessionId || !bookId) return;
 
+    const bookTitle = book?.title || "the book";
+
     // Mark session as completed
     await supabase
       .from('reading_sessions')
@@ -765,17 +767,13 @@ const ReadBook = () => {
           })
           .eq('id', planBook.goal_id);
       }
-
-      toast({
-        title: "Book completed! 🎉",
-        description: "Great job! Returning to dashboard...",
-      });
-    } else {
-      toast({
-        title: "Book completed! 🎉",
-        description: "Great job finishing this book!",
-      });
     }
+
+    // Show completion toast with book title
+    toast({
+      title: "Congratulations! 🎉",
+      description: `You successfully finished "${bookTitle}"`,
+    });
 
     // Redirect to dashboard immediately
     navigate('/dashboard');
