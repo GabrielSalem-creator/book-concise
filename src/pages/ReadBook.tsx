@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward } from "lucide-react";
+import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -33,6 +33,8 @@ const ReadBook = () => {
   const [savedCharPosition, setSavedCharPosition] = useState(0);
   const [ttsInitialized, setTtsInitialized] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const hasCompletedRef = useRef(false);
   
   // Ref to track if we're in iOS WebView
   const isIOSWebView = useRef(
@@ -109,6 +111,13 @@ const ReadBook = () => {
       createInitialSession();
     }
   }, [bookId, user]);
+
+  // Auto-complete when progress reaches 100%
+  useEffect(() => {
+    if (progress >= 100 && !hasCompletedRef.current && !isCompleting && readingSessionId) {
+      handleBookCompletion();
+    }
+  }, [progress, readingSessionId, isCompleting]);
 
   const createInitialSession = async () => {
     if (!user || !bookId) return;
@@ -720,7 +729,15 @@ const ReadBook = () => {
 
   // Handle book completion - mark as finished and redirect
   const handleBookCompletion = async () => {
-    if (!readingSessionId || !bookId) return;
+    if (!readingSessionId || !bookId || hasCompletedRef.current || isCompleting) return;
+    
+    hasCompletedRef.current = true;
+    setIsCompleting(true);
+    
+    // Stop any ongoing speech
+    window.speechSynthesis.cancel();
+    setIsReading(false);
+    setIsPaused(false);
 
     const bookTitle = book?.title || "the book";
 
@@ -991,7 +1008,7 @@ const ReadBook = () => {
                     </Button>
                   )}
                   
-                  {(isReading || isPaused || progress > 0) && (
+                  {(isReading || isPaused || progress > 0) && progress < 100 && (
                     <Button
                       variant="outline"
                       size="lg"
@@ -1001,6 +1018,18 @@ const ReadBook = () => {
                     >
                       <StopCircle className="w-5 h-5" />
                       <span className="hidden sm:inline">Reset</span>
+                    </Button>
+                  )}
+                  
+                  {progress >= 100 && !isCompleting && (
+                    <Button
+                      size="lg"
+                      onClick={handleBookCompletion}
+                      className="gap-2 hover-lift h-12 sm:h-14 px-6 bg-green-600 hover:bg-green-700 text-white"
+                      aria-label="Complete book"
+                    >
+                      <CheckCircle className="w-5 h-5" />
+                      <span>Complete</span>
                     </Button>
                   )}
                 </div>
