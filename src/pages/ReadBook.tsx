@@ -729,7 +729,8 @@ const ReadBook = () => {
 
   // Handle book completion - mark as finished and redirect
   const handleBookCompletion = async () => {
-    if (!readingSessionId || !bookId || hasCompletedRef.current || isCompleting) return;
+    // Only check hasCompletedRef to prevent multiple triggers
+    if (hasCompletedRef.current) return;
     
     hasCompletedRef.current = true;
     setIsCompleting(true);
@@ -741,48 +742,54 @@ const ReadBook = () => {
 
     const bookTitle = book?.title || "the book";
 
-    // Mark session as completed
-    await supabase
-      .from('reading_sessions')
-      .update({ 
-        progress_percentage: 100,
-        last_position: '0',
-        completed_at: new Date().toISOString()
-      })
-      .eq('id', readingSessionId);
-
-    // Check if this book is part of a reading plan
-    const { data: planBook } = await supabase
-      .from('reading_plan_books')
-      .select('id, goal_id')
-      .eq('book_id', bookId)
-      .maybeSingle();
-
-    if (planBook) {
-      // Mark book as completed in the plan
+    // Mark session as completed if we have a session
+    if (readingSessionId) {
       await supabase
-        .from('reading_plan_books')
+        .from('reading_sessions')
         .update({ 
-          status: 'completed',
+          progress_percentage: 100,
+          last_position: '0',
           completed_at: new Date().toISOString()
         })
-        .eq('id', planBook.id);
+        .eq('id', readingSessionId);
+    }
 
-      // Check if all books in the plan are completed
-      const { data: allPlanBooks } = await supabase
+    // Check if this book is part of a reading plan for the current user
+    if (user && bookId) {
+      const { data: planBooks } = await supabase
         .from('reading_plan_books')
-        .select('status')
-        .eq('goal_id', planBook.goal_id);
+        .select('id, goal_id, goals!inner(user_id)')
+        .eq('book_id', bookId);
 
-      const allCompleted = allPlanBooks?.every(b => b.status === 'completed');
-      if (allCompleted) {
+      // Find the plan book that belongs to the current user
+      const userPlanBook = planBooks?.find((pb: any) => pb.goals?.user_id === user.id);
+
+      if (userPlanBook) {
+        // Mark book as completed in the plan
         await supabase
-          .from('goals')
+          .from('reading_plan_books')
           .update({ 
             status: 'completed',
             completed_at: new Date().toISOString()
           })
-          .eq('id', planBook.goal_id);
+          .eq('id', userPlanBook.id);
+
+        // Check if all books in the plan are completed
+        const { data: allPlanBooks } = await supabase
+          .from('reading_plan_books')
+          .select('status')
+          .eq('goal_id', userPlanBook.goal_id);
+
+        const allCompleted = allPlanBooks?.every(b => b.status === 'completed');
+        if (allCompleted) {
+          await supabase
+            .from('goals')
+            .update({ 
+              status: 'completed',
+              completed_at: new Date().toISOString()
+            })
+            .eq('id', userPlanBook.goal_id);
+        }
       }
     }
 
