@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle } from "lucide-react";
+import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle, Download, ExternalLink, FileText, Headphones, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -905,12 +905,42 @@ const ReadBook = () => {
     });
   };
 
+  const handleDownloadPDF = () => {
+    if (!book?.pdf_url) {
+      toast({
+        title: "No PDF available",
+        description: "This book doesn't have a downloadable PDF",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Open PDF in new tab for download
+    window.open(book.pdf_url, '_blank');
+    toast({
+      title: "Opening PDF",
+      description: "The PDF will open in a new tab",
+    });
+  };
+
+  const getSourceDomain = (url: string) => {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname.replace('www.', '');
+    } catch {
+      return 'Unknown source';
+    }
+  };
+
   if (isLoading || !book) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mb-4 glow-effect"></div>
-          <p className="text-muted-foreground">Loading book...</p>
+        <div className="text-center space-y-4">
+          <div className="relative">
+            <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-primary/30 border-t-primary"></div>
+            <Headphones className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-primary animate-pulse" />
+          </div>
+          <p className="text-muted-foreground font-medium">Loading your book...</p>
         </div>
       </div>
     );
@@ -919,52 +949,99 @@ const ReadBook = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-4xl">
-        <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+        <div className="space-y-4 sm:space-y-6">
           {/* Header */}
           <div className="flex items-start gap-3 sm:gap-4">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => navigate('/dashboard')}
-              className="hover-lift shrink-0 h-9 w-9 sm:h-10 sm:w-10"
+              className="hover-lift shrink-0 h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-card/50 backdrop-blur-sm border border-border/50"
               aria-label="Go back to dashboard"
             >
               <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </Button>
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent break-words">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent break-words leading-tight">
                 {book.title}
               </h1>
               {book.author && (
-                <p className="text-sm sm:text-base text-muted-foreground mt-1 truncate">{book.author}</p>
+                <p className="text-sm sm:text-base text-muted-foreground mt-1">{book.author}</p>
               )}
             </div>
           </div>
 
-          {/* Controls Card */}
-          <Card className="glass-morphism p-4 sm:p-6 lg:p-8 border-primary/20 hover-lift glow-effect">
-            <div className="space-y-4 sm:space-y-6">
-              {/* Seekable Progress Slider - Always show when there's content */}
+          {/* PDF Source & Download Card */}
+          {book.pdf_url && (
+            <Card className="glass-morphism p-4 border-secondary/30 bg-gradient-to-r from-secondary/5 to-primary/5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 rounded-xl bg-secondary/10 shrink-0">
+                    <FileText className="w-5 h-5 text-secondary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Original PDF Source</p>
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {getSourceDomain(book.pdf_url)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(book.pdf_url, '_blank')}
+                    className="gap-2 text-xs h-9 hover:bg-secondary/10 hover:border-secondary/50 transition-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    View
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleDownloadPDF}
+                    className="gap-2 text-xs h-9 bg-gradient-to-r from-secondary to-primary hover:opacity-90 transition-opacity"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download PDF
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Audio Player Card */}
+          <Card className="glass-morphism p-4 sm:p-6 border-primary/20 overflow-hidden relative">
+            {/* Decorative Background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none" />
+            
+            <div className="relative space-y-5">
+              {/* Now Playing Header */}
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Volume2 className="w-4 h-4 text-primary animate-pulse" />
+                <span className="text-xs font-medium uppercase tracking-wider">Audio Summary</span>
+              </div>
+
+              {/* Progress Section */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs sm:text-sm">
-                  <span className="text-muted-foreground">Progress</span>
-                  <span className="font-semibold text-primary">{Math.round(progress)}%</span>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground font-medium">Progress</span>
+                  <span className="font-bold text-primary text-lg">{Math.round(progress)}%</span>
                 </div>
                 
                 {/* Skip Controls + Slider */}
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-3">
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => handleSkip('backward')}
-                    className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
+                    className="h-10 w-10 rounded-full hover:bg-primary/10 transition-colors shrink-0"
                     aria-label="Skip backward 10%"
                     disabled={progress <= 0}
                   >
-                    <SkipBack className="w-4 h-4" />
+                    <SkipBack className="w-5 h-5" />
                   </Button>
                   
-                  <div className="flex-1 relative touch-pan-x">
+                  <div className="flex-1 relative touch-pan-x py-2">
                     <Slider
                       value={[progress]}
                       onValueChange={handleSeek}
@@ -979,52 +1056,51 @@ const ReadBook = () => {
                     variant="ghost"
                     size="icon"
                     onClick={() => handleSkip('forward')}
-                    className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
+                    className="h-10 w-10 rounded-full hover:bg-primary/10 transition-colors shrink-0"
                     aria-label="Skip forward 10%"
                     disabled={progress >= 100}
                   >
-                    <SkipForward className="w-4 h-4" />
+                    <SkipForward className="w-5 h-5" />
                   </Button>
                 </div>
               </div>
 
-              {/* Main Controls - Stack on mobile */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+              {/* Main Controls */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 {/* Play/Pause Controls */}
-                <div className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3">
+                <div className="flex items-center justify-center sm:justify-start gap-3">
                   {isPaused || !isReading ? (
                     <Button
                       size="lg"
                       onClick={handlePlay}
-                      className="gap-2 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-opacity px-6 sm:px-8 h-12 sm:h-14 glow-effect min-w-[140px]"
+                      className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-all px-8 h-14 rounded-full shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 min-w-[160px]"
                       aria-label={isPaused ? 'Resume reading' : 'Start reading'}
                     >
-                      <Play className="w-5 h-5 sm:w-6 sm:h-6" />
-                      <span className="text-base sm:text-lg">{isPaused ? 'Resume' : 'Play'}</span>
+                      <Play className="w-6 h-6 fill-current" />
+                      <span className="text-lg font-semibold">{isPaused ? 'Resume' : 'Play'}</span>
                     </Button>
                   ) : (
                     <Button
                       size="lg"
                       variant="secondary"
                       onClick={handlePause}
-                      className="gap-2 px-6 sm:px-8 h-12 sm:h-14 min-w-[140px]"
+                      className="gap-3 px-8 h-14 rounded-full shadow-md hover:shadow-lg hover:scale-105 active:scale-95 min-w-[160px] bg-secondary/20 hover:bg-secondary/30 border border-secondary/30"
                       aria-label="Pause reading"
                     >
-                      <Pause className="w-5 h-5 sm:w-6 sm:h-6" />
-                      <span className="text-base sm:text-lg">Pause</span>
+                      <Pause className="w-6 h-6" />
+                      <span className="text-lg font-semibold">Pause</span>
                     </Button>
                   )}
                   
                   {(isReading || isPaused || progress > 0) && progress < 100 && (
                     <Button
                       variant="outline"
-                      size="lg"
+                      size="icon"
                       onClick={handleStop}
-                      className="gap-2 hover-lift h-12 sm:h-14 px-4"
+                      className="h-12 w-12 rounded-full hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive transition-all"
                       aria-label="Stop and reset"
                     >
                       <StopCircle className="w-5 h-5" />
-                      <span className="hidden sm:inline">Reset</span>
                     </Button>
                   )}
                   
@@ -1032,11 +1108,11 @@ const ReadBook = () => {
                     <Button
                       size="lg"
                       onClick={handleBookCompletion}
-                      className="gap-2 hover-lift h-12 sm:h-14 px-6 bg-green-600 hover:bg-green-700 text-white"
+                      className="gap-3 h-14 px-8 rounded-full bg-green-600 hover:bg-green-500 text-white shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all"
                       aria-label="Complete book"
                     >
-                      <CheckCircle className="w-5 h-5" />
-                      <span>Complete</span>
+                      <CheckCircle className="w-6 h-6" />
+                      <span className="text-lg font-semibold">Complete</span>
                     </Button>
                   )}
                 </div>
@@ -1045,19 +1121,33 @@ const ReadBook = () => {
                 <div className="flex items-center justify-center sm:justify-end gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" className="hover-lift h-10 w-10 sm:h-11 sm:w-11" aria-label="Voice settings">
-                        <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        className="h-11 w-11 rounded-full hover:bg-primary/10 hover:border-primary/50 transition-all" 
+                        aria-label="Voice settings"
+                      >
+                        <Settings className="w-5 h-5" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="glass-morphism">
-                      <DropdownMenuItem onClick={() => setSelectedVoice("random")}>
-                        Random Voice {selectedVoice === "random" && "✓"}
+                    <DropdownMenuContent className="glass-morphism rounded-xl p-1">
+                      <DropdownMenuItem 
+                        onClick={() => setSelectedVoice("random")}
+                        className="rounded-lg cursor-pointer"
+                      >
+                        🎲 Random Voice {selectedVoice === "random" && "✓"}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setSelectedVoice("male")}>
-                        Male Voice {selectedVoice === "male" && "✓"}
+                      <DropdownMenuItem 
+                        onClick={() => setSelectedVoice("male")}
+                        className="rounded-lg cursor-pointer"
+                      >
+                        👨 Male Voice {selectedVoice === "male" && "✓"}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setSelectedVoice("female")}>
-                        Female Voice {selectedVoice === "female" && "✓"}
+                      <DropdownMenuItem 
+                        onClick={() => setSelectedVoice("female")}
+                        className="rounded-lg cursor-pointer"
+                      >
+                        👩 Female Voice {selectedVoice === "female" && "✓"}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1066,20 +1156,24 @@ const ReadBook = () => {
                     variant="outline"
                     size="icon"
                     onClick={handleBookmark}
-                    className={`hover-lift h-10 w-10 sm:h-11 sm:w-11 ${isBookmarked ? "bg-primary/20 text-primary border-primary/30" : ""}`}
+                    className={`h-11 w-11 rounded-full transition-all ${
+                      isBookmarked 
+                        ? "bg-primary/20 text-primary border-primary/50 hover:bg-primary/30" 
+                        : "hover:bg-primary/10 hover:border-primary/50"
+                    }`}
                     aria-label={isBookmarked ? "Remove bookmark" : "Add bookmark"}
                   >
-                    <BookmarkPlus className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <BookmarkPlus className="w-5 h-5" />
                   </Button>
 
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={handleShare}
-                    className="hover-lift h-10 w-10 sm:h-11 sm:w-11"
+                    className="h-11 w-11 rounded-full hover:bg-accent/10 hover:border-accent/50 transition-all"
                     aria-label="Copy summary to clipboard"
                   >
-                    <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <Share2 className="w-5 h-5" />
                   </Button>
                 </div>
               </div>
@@ -1087,9 +1181,13 @@ const ReadBook = () => {
           </Card>
 
           {/* Summary Content */}
-          <Card className="glass-morphism p-4 sm:p-6 lg:p-8 border-primary/20">
+          <Card className="glass-morphism p-5 sm:p-6 lg:p-8 border-primary/20">
+            <div className="flex items-center gap-2 mb-4 pb-4 border-b border-border/50">
+              <FileText className="w-5 h-5 text-primary" />
+              <h2 className="font-semibold text-foreground">Book Summary</h2>
+            </div>
             <div className="prose prose-sm sm:prose-base lg:prose-lg max-w-none dark:prose-invert">
-              <div className="whitespace-pre-wrap leading-relaxed text-foreground/90 text-sm sm:text-base lg:text-lg break-words">
+              <div className="whitespace-pre-wrap leading-relaxed text-foreground/85 text-sm sm:text-base lg:text-lg">
                 {summary || "No summary available for this book."}
               </div>
             </div>
