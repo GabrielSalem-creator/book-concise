@@ -115,6 +115,13 @@ const ReadBook = () => {
     }
   }, [bookId, user]);
 
+  // Auto-search for PDF when book loads without one
+  useEffect(() => {
+    if (book && !book.pdf_url && !isSearchingPdf && !isLoading) {
+      searchForPdf();
+    }
+  }, [book?.id, book?.pdf_url, isLoading]);
+
   // Auto-complete when progress reaches 100%
   useEffect(() => {
     if (progress >= 100 && !hasCompletedRef.current && !isCompleting && readingSessionId) {
@@ -1016,90 +1023,55 @@ const ReadBook = () => {
             >
               <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </Button>
+            
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent break-words leading-tight">
-                {book.title}
-              </h1>
+              {/* Clickable Title with Shine Effect */}
+              {book.pdf_url ? (
+                <button
+                  onClick={() => window.open(book.pdf_url, '_blank')}
+                  className="text-left group cursor-pointer"
+                >
+                  <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold break-words leading-tight relative">
+                    <span className="bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all duration-300">
+                      {book.title}
+                    </span>
+                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300 pointer-events-none" />
+                  </h1>
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 group-hover:text-primary/70 transition-colors">
+                    <ExternalLink className="w-3 h-3" />
+                    <span>Click to view PDF</span>
+                  </p>
+                </button>
+              ) : (
+                <div>
+                  <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent break-words leading-tight">
+                    {book.title}
+                  </h1>
+                  {isSearchingPdf && (
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Finding PDF...</span>
+                    </p>
+                  )}
+                </div>
+              )}
               {book.author && (
                 <p className="text-sm sm:text-base text-muted-foreground mt-1">{book.author}</p>
               )}
             </div>
+
+            {/* Download Button */}
+            {book.pdf_url && (
+              <Button
+                onClick={handleDownloadPDF}
+                size="icon"
+                className="shrink-0 h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-gradient-to-br from-secondary via-primary to-accent hover:opacity-90 shadow-lg hover:shadow-xl transition-all hover:scale-105"
+                aria-label="Download PDF"
+              >
+                <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+              </Button>
+            )}
           </div>
-
-          {/* PDF Source & Download Card - Always Visible */}
-          <Card className="glass-morphism p-4 sm:p-5 border-secondary/30 bg-gradient-to-r from-secondary/10 via-primary/5 to-accent/10 shadow-lg">
-            <div className="flex flex-col gap-4">
-              {/* Header */}
-              <div className="flex items-center gap-3">
-                <div className="p-3 rounded-xl bg-gradient-to-br from-secondary/20 to-primary/20 border border-secondary/20">
-                  <FileText className="w-6 h-6 text-secondary" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground">Original Book PDF</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {book.pdf_url ? `Source: ${getSourceDomain(book.pdf_url)}` : 'No PDF source available'}
-                  </p>
-                </div>
-              </div>
-
-              {book.pdf_url ? (
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => window.open(book.pdf_url, '_blank')}
-                    className="flex-1 gap-2 h-11 hover:bg-secondary/10 hover:border-secondary/50 transition-all group"
-                  >
-                    <ExternalLink className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    <span>Visit Source URL</span>
-                  </Button>
-                  <Button
-                    onClick={handleDownloadPDF}
-                    className="flex-1 gap-2 h-11 bg-gradient-to-r from-secondary via-primary to-accent hover:opacity-90 transition-all shadow-md hover:shadow-lg group"
-                  >
-                    <Download className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    <span>Download Full PDF</span>
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  <Button
-                    onClick={searchForPdf}
-                    disabled={isSearchingPdf}
-                    className="w-full gap-2 h-11 bg-gradient-to-r from-secondary via-primary to-accent hover:opacity-90 transition-all shadow-md hover:shadow-lg group"
-                  >
-                    {isSearchingPdf ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Searching for PDF...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Search className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                        <span>Find PDF Online</span>
-                      </>
-                    )}
-                  </Button>
-                  {foundPdfUrls.length > 1 && (
-                    <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">Other sources found:</p>
-                      {foundPdfUrls.slice(1, 4).map((url, idx) => (
-                        <Button
-                          key={idx}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(url, '_blank')}
-                          className="w-full gap-2 text-xs h-9 justify-start truncate"
-                        >
-                          <ExternalLink className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{getSourceDomain(url)}</span>
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </Card>
 
           {/* Audio Player Card */}
           <Card className="glass-morphism p-4 sm:p-6 border-primary/20 overflow-hidden relative">
