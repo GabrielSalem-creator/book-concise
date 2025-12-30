@@ -7,6 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/AuthProvider";
+import BookChat from "@/components/BookChat";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1194,6 +1195,16 @@ const ReadBook = () => {
           </Card>
         </div>
       </div>
+
+      {/* Book Chat */}
+      {summary && (
+        <BookChat
+          bookId={bookId || ''}
+          bookTitle={book.title}
+          bookAuthor={book.author}
+          summary={summary}
+        />
+      )}
     </div>
   );
 };
