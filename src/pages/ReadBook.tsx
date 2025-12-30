@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle, Download, ExternalLink, FileText, Headphones, Volume2 } from "lucide-react";
+import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle, Download, ExternalLink, FileText, Headphones, Volume2, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -36,6 +36,8 @@ const ReadBook = () => {
   const [isSeeking, setIsSeeking] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const hasCompletedRef = useRef(false);
+  const [isSearchingPdf, setIsSearchingPdf] = useState(false);
+  const [foundPdfUrls, setFoundPdfUrls] = useState<string[]>([]);
   
   // Ref to track if we're in iOS WebView
   const isIOSWebView = useRef(
@@ -933,6 +935,58 @@ const ReadBook = () => {
     }
   };
 
+  const searchForPdf = async () => {
+    if (!book?.title) return;
+    
+    setIsSearchingPdf(true);
+    setFoundPdfUrls([]);
+    
+    try {
+      const searchQuery = book.author 
+        ? `${book.title} ${book.author}` 
+        : book.title;
+      
+      const { data, error } = await supabase.functions.invoke('search-book-pdf', {
+        body: { bookName: searchQuery }
+      });
+      
+      if (error) throw error;
+      
+      if (data.success && data.pdfUrls?.length > 0) {
+        setFoundPdfUrls(data.pdfUrls);
+        
+        // Update book in database with first found URL
+        await supabase
+          .from('books')
+          .update({ pdf_url: data.pdfUrls[0] })
+          .eq('id', book.id);
+        
+        // Update local state
+        setBook({ ...book, pdf_url: data.pdfUrls[0] });
+        
+        toast({
+          title: "PDF Found!",
+          description: `Found ${data.pdfUrls.length} PDF source(s)`,
+        });
+      } else {
+        toast({
+          title: "No PDF Found",
+          description: "Could not find a PDF for this book",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error searching for PDF:', error);
+      toast({
+        title: "Search Failed",
+        description: "Could not search for PDF",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearchingPdf(false);
+    }
+  };
+
   if (isLoading || !book) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5 flex items-center justify-center">
@@ -1007,10 +1061,41 @@ const ReadBook = () => {
                   </Button>
                 </div>
               ) : (
-                <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    This book doesn't have a linked PDF source yet.
-                  </p>
+                <div className="flex flex-col gap-3">
+                  <Button
+                    onClick={searchForPdf}
+                    disabled={isSearchingPdf}
+                    className="w-full gap-2 h-11 bg-gradient-to-r from-secondary via-primary to-accent hover:opacity-90 transition-all shadow-md hover:shadow-lg group"
+                  >
+                    {isSearchingPdf ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Searching for PDF...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Search className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        <span>Find PDF Online</span>
+                      </>
+                    )}
+                  </Button>
+                  {foundPdfUrls.length > 1 && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Other sources found:</p>
+                      {foundPdfUrls.slice(1, 4).map((url, idx) => (
+                        <Button
+                          key={idx}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(url, '_blank')}
+                          className="w-full gap-2 text-xs h-9 justify-start truncate"
+                        >
+                          <ExternalLink className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{getSourceDomain(url)}</span>
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
