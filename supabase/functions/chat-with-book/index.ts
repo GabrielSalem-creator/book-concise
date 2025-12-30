@@ -36,27 +36,18 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    // System prompt specialized for book discussions
-    const systemPrompt = `You are an expert book discussion assistant. You have complete knowledge of the book "${bookTitle}"${bookAuthor ? ` by ${bookAuthor}` : ''}.
+    // System prompt specialized for book discussions - CONCISE
+    const systemPrompt = `You are a concise book assistant for "${bookTitle}"${bookAuthor ? ` by ${bookAuthor}` : ''}.
 
-Here is the summary of the book you're discussing:
----
+Book summary:
 ${summary}
----
 
-Your role:
-1. Answer questions about the book's content, themes, and key insights
-2. Clarify concepts and ideas from the book
-3. Provide deeper analysis when asked
-4. Relate book concepts to real-world applications
-5. Help users understand and apply what they've learned
-
-Guidelines:
-- Be concise but thorough
-- Use examples from the book when relevant
-- If asked about something not in the summary, acknowledge that and provide general guidance
-- Be encouraging and helpful
-- Format responses with markdown for clarity when appropriate`;
+RULES:
+- Keep responses SHORT (2-4 sentences max)
+- Be direct and clear
+- Use bullet points for lists
+- No fluff or unnecessary words
+- Answer ONLY what was asked`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
