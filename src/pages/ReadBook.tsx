@@ -972,43 +972,49 @@ const ReadBook = () => {
             </div>
           </div>
 
-          {/* PDF Source & Download Card */}
-          {book.pdf_url && (
-            <Card className="glass-morphism p-4 border-secondary/30 bg-gradient-to-r from-secondary/5 to-primary/5">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="p-2.5 rounded-xl bg-secondary/10 shrink-0">
-                    <FileText className="w-5 h-5 text-secondary" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">Original PDF Source</p>
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {getSourceDomain(book.pdf_url)}
-                    </p>
-                  </div>
+          {/* PDF Source & Download Card - Always Visible */}
+          <Card className="glass-morphism p-4 sm:p-5 border-secondary/30 bg-gradient-to-r from-secondary/10 via-primary/5 to-accent/10 shadow-lg">
+            <div className="flex flex-col gap-4">
+              {/* Header */}
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-gradient-to-br from-secondary/20 to-primary/20 border border-secondary/20">
+                  <FileText className="w-6 h-6 text-secondary" />
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open(book.pdf_url, '_blank')}
-                    className="gap-2 text-xs h-9 hover:bg-secondary/10 hover:border-secondary/50 transition-all"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    View
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleDownloadPDF}
-                    className="gap-2 text-xs h-9 bg-gradient-to-r from-secondary to-primary hover:opacity-90 transition-opacity"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Download PDF
-                  </Button>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Original Book PDF</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {book.pdf_url ? `Source: ${getSourceDomain(book.pdf_url)}` : 'No PDF source available'}
+                  </p>
                 </div>
               </div>
-            </Card>
-          )}
+
+              {book.pdf_url ? (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => window.open(book.pdf_url, '_blank')}
+                    className="flex-1 gap-2 h-11 hover:bg-secondary/10 hover:border-secondary/50 transition-all group"
+                  >
+                    <ExternalLink className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    <span>Visit Source URL</span>
+                  </Button>
+                  <Button
+                    onClick={handleDownloadPDF}
+                    className="flex-1 gap-2 h-11 bg-gradient-to-r from-secondary via-primary to-accent hover:opacity-90 transition-all shadow-md hover:shadow-lg group"
+                  >
+                    <Download className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    <span>Download Full PDF</span>
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    This book doesn't have a linked PDF source yet.
+                  </p>
+                </div>
+              )}
+            </div>
+          </Card>
 
           {/* Audio Player Card */}
           <Card className="glass-morphism p-4 sm:p-6 border-primary/20 overflow-hidden relative">
