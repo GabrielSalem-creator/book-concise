@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Moon, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu, Search } from "lucide-react";
+import { Moon, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu, Search, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BookSearch } from "@/components/BookSearch";
 import { SummaryDisplay } from "@/components/SummaryDisplay";
@@ -13,7 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
-
+import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { useActivityTracker } from "@/hooks/useActivityTracker";
 const Dashboard = () => {
   const [summary, setSummary] = useState<string>("");
   const [bookTitle, setBookTitle] = useState<string>("");
@@ -30,6 +31,8 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { isAdmin } = useAdminCheck();
+  useActivityTracker();
 
   useEffect(() => {
     if (!user) {
@@ -260,6 +263,12 @@ const Dashboard = () => {
             {/* Desktop Navigation */}
             <nav className="hidden lg:flex items-center gap-1" aria-label="Main navigation">
               <NavLinks />
+              {isAdmin && (
+                <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="text-primary">
+                  <Shield className="w-4 h-4 mr-2" />
+                  Admin
+                </Button>
+              )}
               <ThemeToggle />
               <AccountSettings />
               <Button 
