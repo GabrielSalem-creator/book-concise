@@ -34,6 +34,14 @@ interface BookData {
   total_reads: number;
   active_readers: number;
   summaries_count: number;
+  pdf_url: string | null;
+}
+
+interface Summary {
+  id: string;
+  book_id: string;
+  content: string;
+  created_at: string;
 }
 
 export const AdminBooksTable = () => {
@@ -77,6 +85,7 @@ export const AdminBooksTable = () => {
         total_reads: sessions?.filter(s => s.book_id === book.id && s.completed_at).length || 0,
         active_readers: activeSessions?.filter(s => s.book_id === book.id).length || 0,
         summaries_count: summaries?.filter(s => s.book_id === book.id).length || 0,
+        pdf_url: book.pdf_url,
       })) || [];
 
       // Sort by total reads (most popular first)
@@ -113,6 +122,61 @@ export const AdminBooksTable = () => {
       toast({
         title: 'Error',
         description: 'Failed to delete summaries.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const downloadSummary = async (bookId: string, bookTitle: string) => {
+    try {
+      const { data: summaries, error } = await supabase
+        .from('summaries')
+        .select('*')
+        .eq('book_id', bookId);
+
+      if (error) throw error;
+
+      if (!summaries || summaries.length === 0) {
+        toast({
+          title: 'No summaries',
+          description: 'No summaries available for this book.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const content = summaries.map((s: Summary) => 
+        `Summary (${format(new Date(s.created_at), 'MMM d, yyyy')}):\n\n${s.content}\n\n---\n`
+      ).join('\n');
+
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${bookTitle.replace(/[^a-z0-9]/gi, '_')}-summaries.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: 'Downloaded',
+        description: `Summaries for "${bookTitle}" downloaded.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to download summaries.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const downloadBook = (book: BookData) => {
+    if (book.pdf_url) {
+      window.open(book.pdf_url, '_blank');
+    } else {
+      toast({
+        title: 'No PDF',
+        description: 'No PDF available for this book.',
         variant: 'destructive',
       });
     }
@@ -243,36 +307,57 @@ export const AdminBooksTable = () => {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="text-destructive hover:text-destructive"
-                            disabled={book.summaries_count === 0}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Summaries</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete all {book.summaries_count} summaries for "{book.title}". 
-                              This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction 
-                              onClick={() => deleteSummaries(book.id, book.title)}
-                              className="bg-destructive hover:bg-destructive/90"
+                      <div className="flex items-center gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => downloadBook(book)}
+                          disabled={!book.pdf_url}
+                          title="Download PDF"
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => downloadSummary(book.id, book.title)}
+                          disabled={book.summaries_count === 0}
+                          title="Download Summary"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-destructive hover:text-destructive"
+                              disabled={book.summaries_count === 0}
+                              title="Delete Summaries"
                             >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Summaries</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently delete all {book.summaries_count} summaries for "{book.title}". 
+                                This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => deleteSummaries(book.id, book.title)}
+                                className="bg-destructive hover:bg-destructive/90"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

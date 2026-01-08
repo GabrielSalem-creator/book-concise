@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Users, Download, RefreshCw, Search, Circle, 
-  Clock, Calendar, Mail, User
+  Clock, Calendar, Mail, User, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,8 +11,20 @@ import {
   Table, TableBody, TableCell, TableHead, 
   TableHeader, TableRow 
 } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { format, formatDistanceToNow } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 interface UserData {
   id: string;
@@ -32,6 +44,7 @@ export const AdminUsersTable = () => {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const { toast } = useToast();
 
   const loadUsers = async () => {
     setLoading(true);
@@ -83,7 +96,7 @@ export const AdminUsersTable = () => {
           last_seen: activeSession?.last_seen_at || null,
           total_sessions: userAllSessions?.length || 0,
           books_read: userReadingSessions?.length || 0,
-          credits: userPrefs?.daily_credits || 0,
+          credits: userPrefs?.daily_credits ?? 2,
         };
       }) || [];
 
@@ -99,6 +112,56 @@ export const AdminUsersTable = () => {
     loadUsers();
   }, []);
 
+  const deleteUser = async (user: UserData) => {
+    try {
+      // Delete all user data
+      await Promise.all([
+        supabase.from('user_preferences').delete().eq('user_id', user.user_id),
+        supabase.from('user_sessions').delete().eq('user_id', user.user_id),
+        supabase.from('user_activity').delete().eq('user_id', user.user_id),
+        supabase.from('reading_sessions').delete().eq('user_id', user.user_id),
+        supabase.from('bookmarks').delete().eq('user_id', user.user_id),
+        supabase.from('chat_messages').delete().eq('user_id', user.user_id),
+        supabase.from('user_roles').delete().eq('user_id', user.user_id),
+      ]);
+
+      // Delete goals and reading plan books
+      const { data: goals } = await supabase
+        .from('goals')
+        .select('id')
+        .eq('user_id', user.user_id);
+
+      if (goals?.length) {
+        await supabase
+          .from('reading_plan_books')
+          .delete()
+          .in('goal_id', goals.map(g => g.id));
+        
+        await supabase
+          .from('goals')
+          .delete()
+          .eq('user_id', user.user_id);
+      }
+
+      // Delete profile
+      await supabase.from('profiles').delete().eq('user_id', user.user_id);
+
+      toast({
+        title: 'User deleted',
+        description: `All data for ${user.full_name || user.email} has been removed.`,
+      });
+
+      loadUsers();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete user.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const filteredUsers = users.filter(user => 
     user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -106,10 +169,10 @@ export const AdminUsersTable = () => {
   );
 
   const exportToCSV = () => {
-    const headers = ['Name', 'Username', 'Created At', 'Online', 'Last Seen', 'Sessions', 'Books Read', 'Credits'];
+    const headers = ['Name', 'Email', 'Created At', 'Online', 'Last Seen', 'Sessions', 'Books Read', 'Credits'];
     const rows = filteredUsers.map(u => [
       u.full_name || '',
-      u.username || '',
+      u.email,
       format(new Date(u.created_at), 'yyyy-MM-dd HH:mm'),
       u.is_online ? 'Yes' : 'No',
       u.last_seen ? format(new Date(u.last_seen), 'yyyy-MM-dd HH:mm') : 'Never',
@@ -164,24 +227,26 @@ export const AdminUsersTable = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>User</TableHead>
+                <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Last Seen</TableHead>
                 <TableHead>Sessions</TableHead>
                 <TableHead>Books</TableHead>
                 <TableHead>Credits</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={9} className="text-center py-8">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-primary" />
                   </TableCell>
                 </TableRow>
               ) : filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     No users found
                   </TableCell>
                 </TableRow>
@@ -193,10 +258,13 @@ export const AdminUsersTable = () => {
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
                           <User className="w-4 h-4 text-primary-foreground" />
                         </div>
-                        <div>
-                          <div className="font-medium">{user.full_name || 'No name'}</div>
-                          <div className="text-sm text-muted-foreground">{user.username}</div>
-                        </div>
+                        <div className="font-medium">{user.full_name || 'No name'}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 text-sm">
+                        <Mail className="w-3 h-3 text-muted-foreground" />
+                        {user.email}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -229,6 +297,33 @@ export const AdminUsersTable = () => {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="bg-accent/10">{user.credits}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete User</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete all data for <strong>{user.full_name || user.email}</strong>. 
+                              This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={() => deleteUser(user)}
+                              className="bg-destructive hover:bg-destructive/90"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))
