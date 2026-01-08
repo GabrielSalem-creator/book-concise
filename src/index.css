@@ -122,4 +122,88 @@ All colors MUST be HSL.
       background-position: 100% 50%;
     }
   }
+
+  /* Streak urgency animations */
+  @keyframes flame-flicker {
+    0%, 100% { 
+      transform: scale(1) rotate(0deg); 
+      filter: brightness(1);
+    }
+    25% { 
+      transform: scale(1.1) rotate(-3deg); 
+      filter: brightness(1.2);
+    }
+    50% { 
+      transform: scale(0.95) rotate(2deg); 
+      filter: brightness(0.9);
+    }
+    75% { 
+      transform: scale(1.05) rotate(-1deg); 
+      filter: brightness(1.1);
+    }
+  }
+
+  .animate-flame {
+    animation: flame-flicker 0.5s ease-in-out infinite;
+  }
+
+  @keyframes urgency-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 hsl(var(--destructive) / 0.7);
+    }
+    50% {
+      box-shadow: 0 0 0 10px hsl(var(--destructive) / 0);
+    }
+  }
+
+  .animate-urgency-pulse {
+    animation: urgency-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+    20%, 40%, 60%, 80% { transform: translateX(2px); }
+  }
+
+  .animate-shake {
+    animation: shake 0.5s ease-in-out;
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% {
+      box-shadow: 0 0 5px hsl(var(--primary) / 0.5), 0 0 20px hsl(var(--primary) / 0.3);
+    }
+    50% {
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.8), 0 0 40px hsl(var(--primary) / 0.5);
+    }
+  }
+
+  .animate-glow-pulse {
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes countdown-urgent {
+    0%, 100% { 
+      transform: scale(1);
+      color: hsl(var(--destructive));
+    }
+    50% { 
+      transform: scale(1.05);
+      color: hsl(var(--destructive));
+    }
+  }
+
+  .animate-countdown {
+    animation: countdown-urgent 1s ease-in-out infinite;
+  }
 }
