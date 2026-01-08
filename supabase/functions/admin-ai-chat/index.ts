@@ -43,19 +43,19 @@ serve(async (req) => {
       throw new Error('Admin access required');
     }
 
-    // Get Azure OpenAI credentials
-    const azureEndpoint = Deno.env.get('AZURE_OPENAI_ENDPOINT');
-    const azureApiKey = Deno.env.get('AZURE_OPENAI_API_KEY');
-
-    if (!azureEndpoint || !azureApiKey) {
-      throw new Error('Azure OpenAI credentials not configured');
+    // Get Lovable API key
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!lovableApiKey) {
+      throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    // System prompt for AccountancyForge
-    const systemPrompt = `You are AccountancyForge, an elite forensic accountant and business strategist with 20+ years optimizing e-commerce and SaaS platforms. You have FULL, UNRESTRICTED ACCESS to this website's entire ecosystem.
-
-Current Platform Data:
-${platformStats ? `
+    // Build platform data string
+    let platformDataStr = 'Platform data unavailable.';
+    if (platformStats) {
+      const mostReadBooks = platformStats.mostReadBooks?.map((b: any) => `${b.title} (${b.count} reads)`).join(', ') || 'N/A';
+      const recentActivity = platformStats.recentActivity?.map((a: any) => `${a.action} (${a.count}x)`).join(', ') || 'N/A';
+      
+      platformDataStr = `
 - Total Users: ${platformStats.totalUsers}
 - Currently Active Users: ${platformStats.activeUsers}
 - New Users Today: ${platformStats.newUsersToday}
@@ -64,9 +64,15 @@ ${platformStats ? `
 - Total Sessions: ${platformStats.totalSessions}
 - Total Summaries Generated: ${platformStats.totalSummaries}
 - Avg Sessions Per User: ${platformStats.avgSessionsPerUser}
-- Most Read Books: ${platformStats.mostReadBooks?.map((b: any) => `${b.title} (${b.count} reads)`).join(', ') || 'N/A'}
-- Recent Activity Types: ${platformStats.recentActivity?.map((a: any) => `${a.action} (${a.count}x)`).join(', ') || 'N/A'}
-` : 'Platform data unavailable.'}
+- Most Read Books: ${mostReadBooks}
+- Recent Activity Types: ${recentActivity}`;
+    }
+
+    // System prompt for AccountancyForge
+    const systemPrompt = `You are AccountancyForge, an elite forensic accountant and business strategist with 20+ years optimizing e-commerce and SaaS platforms. You have FULL, UNRESTRICTED ACCESS to this website's entire ecosystem.
+
+Current Platform Data:
+${platformDataStr}
 
 Your mission: Perform a DEEP, REAL-TIME AUDIT of the platform's health based on the data provided.
 
@@ -90,18 +96,15 @@ Follow this chain-of-thought process:
 
 Output in markdown format - concise, actionable, with clear sections using emojis for visual clarity.`;
 
-    // Call Azure OpenAI API
-    const deploymentName = 'gpt-4o'; // Adjust based on your deployment
-    const apiVersion = '2024-02-15-preview';
-    const azureUrl = `${azureEndpoint}/openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
-
-    const response = await fetch(azureUrl, {
+    // Call Lovable AI Gateway
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${lovableApiKey}`,
         'Content-Type': 'application/json',
-        'api-key': azureApiKey,
       },
       body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           ...messages
@@ -114,8 +117,22 @@ Output in markdown format - concise, actionable, with clear sections using emoji
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Azure OpenAI error:', response.status, errorText);
-      throw new Error(`Azure OpenAI error: ${response.status}`);
+      console.error('Lovable AI error:', response.status, errorText);
+      
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: 'API credits exhausted. Please add more credits.' }), {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      throw new Error(`AI API error: ${response.status}`);
     }
 
     // Return streaming response
