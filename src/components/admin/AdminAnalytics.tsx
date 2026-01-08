@@ -76,13 +76,25 @@ export const AdminAnalytics = () => {
         .from('summaries')
         .select('*', { count: 'exact', head: true });
 
-      // Active now
+      // Active now - only count sessions where the user still exists
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const { count: activeNow } = await supabase
+      
+      // Get all existing user_ids from profiles
+      const { data: existingProfiles } = await supabase
+        .from('profiles')
+        .select('user_id');
+      
+      const existingUserIds = new Set(existingProfiles?.map(p => p.user_id) || []);
+      
+      // Get active sessions
+      const { data: activeSessions } = await supabase
         .from('user_sessions')
-        .select('*', { count: 'exact', head: true })
+        .select('user_id')
         .eq('is_active', true)
         .gte('last_seen_at', fiveMinutesAgo);
+      
+      // Count only sessions for existing users
+      const activeNow = activeSessions?.filter(s => existingUserIds.has(s.user_id)).length || 0;
 
       // User growth (last 7 days vs previous 7 days)
       const sevenDaysAgo = subDays(new Date(), 7);
