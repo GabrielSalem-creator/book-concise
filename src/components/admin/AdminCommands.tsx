@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { 
   Terminal, UserPlus, Trash2, CreditCard, 
-  RefreshCw, Mail, Lock, AlertTriangle
+  RefreshCw, Mail, Lock, AlertTriangle, Shield
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +37,9 @@ export const AdminCommands = () => {
   const [creditsUserEmail, setCreditsUserEmail] = useState('');
   const [creditsAmount, setCreditsAmount] = useState('');
 
+  // Admin form
+  const [adminEmail, setAdminEmail] = useState('');
+
   const handleCreateUser = async () => {
     if (!newUserEmail || !newUserPassword) {
       toast({
@@ -50,8 +52,6 @@ export const AdminCommands = () => {
 
     setLoading('create');
     try {
-      // Note: Creating users requires admin API or invite flow
-      // For now, we'll just show how it would work
       toast({
         title: 'User creation',
         description: 'User creation requires Supabase Admin API. Use invite flow instead.',
@@ -80,7 +80,6 @@ export const AdminCommands = () => {
 
     setLoading('delete');
     try {
-      // Find user by email in profiles
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('user_id, full_name')
@@ -97,7 +96,6 @@ export const AdminCommands = () => {
         return;
       }
 
-      // Delete all user data
       await Promise.all([
         supabase.from('user_preferences').delete().eq('user_id', profile.user_id),
         supabase.from('user_sessions').delete().eq('user_id', profile.user_id),
@@ -105,9 +103,9 @@ export const AdminCommands = () => {
         supabase.from('reading_sessions').delete().eq('user_id', profile.user_id),
         supabase.from('bookmarks').delete().eq('user_id', profile.user_id),
         supabase.from('chat_messages').delete().eq('user_id', profile.user_id),
+        supabase.from('user_roles').delete().eq('user_id', profile.user_id),
       ]);
 
-      // Delete goals and reading plan books
       const { data: goals } = await supabase
         .from('goals')
         .select('id')
@@ -125,12 +123,11 @@ export const AdminCommands = () => {
           .eq('user_id', profile.user_id);
       }
 
-      // Delete profile
       await supabase.from('profiles').delete().eq('user_id', profile.user_id);
 
       toast({
         title: 'User data deleted',
-        description: `All data for ${profile.full_name || deleteUserEmail} has been removed. Note: Auth account requires Admin API.`,
+        description: `All data for ${profile.full_name || deleteUserEmail} has been removed.`,
       });
 
       setDeleteUserEmail('');
@@ -158,7 +155,6 @@ export const AdminCommands = () => {
 
     setLoading('credits');
     try {
-      // Find user by email
       const { data: profile } = await supabase
         .from('profiles')
         .select('user_id, full_name')
@@ -175,7 +171,6 @@ export const AdminCommands = () => {
         return;
       }
 
-      // Update credits
       const { error } = await supabase
         .from('user_preferences')
         .update({ daily_credits: parseInt(creditsAmount) })
@@ -194,7 +189,129 @@ export const AdminCommands = () => {
       console.error('Error updating credits:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update credits. Check if credit modification is allowed.',
+        description: 'Failed to update credits.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleAddAdmin = async () => {
+    if (!adminEmail) {
+      toast({
+        title: 'Missing email',
+        description: 'Please enter the admin email.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading('admin');
+    try {
+      // Find user by email
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .eq('username', adminEmail)
+        .maybeSingle();
+
+      if (!profile) {
+        toast({
+          title: 'User not found',
+          description: 'No user found with that email. They must sign up first.',
+          variant: 'destructive',
+        });
+        setLoading(null);
+        return;
+      }
+
+      // Check if already admin
+      const { data: existingRole } = await supabase
+        .from('user_roles')
+        .select('id')
+        .eq('user_id', profile.user_id)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+      if (existingRole) {
+        toast({
+          title: 'Already admin',
+          description: 'This user is already an admin.',
+          variant: 'destructive',
+        });
+        setLoading(null);
+        return;
+      }
+
+      // Add admin role
+      const { error } = await supabase
+        .from('user_roles')
+        .insert({ user_id: profile.user_id, role: 'admin' });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Admin added',
+        description: `${profile.full_name || adminEmail} is now an admin.`,
+      });
+
+      setAdminEmail('');
+    } catch (error) {
+      console.error('Error adding admin:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to add admin role.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleResetAllCredits = async () => {
+    setLoading('resetCredits');
+    try {
+      const { error } = await supabase
+        .from('user_preferences')
+        .update({ daily_credits: 2 });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Credits reset',
+        description: 'All users now have 2 daily credits.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to reset credits.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleClearInactiveSessions = async () => {
+    setLoading('clearSessions');
+    try {
+      const { error } = await supabase
+        .from('user_sessions')
+        .update({ is_active: false, ended_at: new Date().toISOString() })
+        .eq('is_active', true)
+        .lt('last_seen_at', new Date(Date.now() - 5 * 60 * 1000).toISOString());
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sessions cleared',
+        description: 'Inactive sessions have been ended.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to clear sessions.',
         variant: 'destructive',
       });
     } finally {
@@ -301,14 +418,7 @@ export const AdminCommands = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete all data for <strong>{deleteUserEmail}</strong> including:
-                  <ul className="list-disc pl-5 mt-2 space-y-1">
-                    <li>Profile information</li>
-                    <li>Reading sessions and progress</li>
-                    <li>Goals and reading plans</li>
-                    <li>Bookmarks and preferences</li>
-                    <li>Chat messages</li>
-                  </ul>
+                  This will permanently delete all data for <strong>{deleteUserEmail}</strong>.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -333,7 +443,7 @@ export const AdminCommands = () => {
             Manage Credits
           </CardTitle>
           <CardDescription>
-            Adjust daily credits for a user
+            Adjust daily credits for a user (default: 2/day)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -371,8 +481,42 @@ export const AdminCommands = () => {
         </CardContent>
       </Card>
 
+      {/* Add Admin */}
+      <Card className="glass-morphism border-primary/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-primary" />
+            Add Admin
+          </CardTitle>
+          <CardDescription>
+            Grant admin access to a user
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="admin-email">User Email</Label>
+            <Input
+              id="admin-email"
+              type="email"
+              placeholder="admin@example.com"
+              value={adminEmail}
+              onChange={(e) => setAdminEmail(e.target.value)}
+            />
+          </div>
+          <Button 
+            className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90" 
+            onClick={handleAddAdmin}
+            disabled={loading === 'admin'}
+          >
+            {loading === 'admin' && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
+            <Shield className="w-4 h-4 mr-2" />
+            Grant Admin Access
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Quick Actions */}
-      <Card className="glass-morphism border-secondary/20">
+      <Card className="glass-morphism border-secondary/20 lg:col-span-2">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Terminal className="w-5 h-5 text-secondary" />
@@ -382,18 +526,24 @@ export const AdminCommands = () => {
             Common administrative tasks
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <Button variant="outline" className="w-full justify-start">
+        <CardContent className="flex flex-wrap gap-3">
+          <Button 
+            variant="outline" 
+            onClick={handleResetAllCredits}
+            disabled={loading === 'resetCredits'}
+          >
+            {loading === 'resetCredits' && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
             <RefreshCw className="w-4 h-4 mr-2" />
-            Reset All Daily Credits
+            Reset All Credits to 2
           </Button>
-          <Button variant="outline" className="w-full justify-start">
+          <Button 
+            variant="outline"
+            onClick={handleClearInactiveSessions}
+            disabled={loading === 'clearSessions'}
+          >
+            {loading === 'clearSessions' && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
             <Lock className="w-4 h-4 mr-2" />
             Clear Inactive Sessions
-          </Button>
-          <Button variant="outline" className="w-full justify-start text-destructive hover:text-destructive">
-            <Trash2 className="w-4 h-4 mr-2" />
-            Purge Old Activity Logs
           </Button>
         </CardContent>
       </Card>

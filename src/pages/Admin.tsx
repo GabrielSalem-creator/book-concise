@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Shield, Users, Book, Activity, Download, ArrowLeft, 
-  RefreshCw, Trash2, CreditCard, UserPlus, BarChart3,
-  TrendingUp, Clock, Eye
+  Shield, Users, Book, Activity, ArrowLeft, 
+  RefreshCw, CreditCard, BarChart3, Bot
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,6 +13,7 @@ import { AdminBooksTable } from '@/components/admin/AdminBooksTable';
 import { AdminAnalytics } from '@/components/admin/AdminAnalytics';
 import { AdminActivityFeed } from '@/components/admin/AdminActivityFeed';
 import { AdminCommands } from '@/components/admin/AdminCommands';
+import { AdminAIChat } from '@/components/admin/AdminAIChat';
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -72,7 +72,7 @@ const Admin = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 lg:px-6 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
+          <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-grid">
             <TabsTrigger value="overview" className="gap-2">
               <BarChart3 className="w-4 h-4" />
               <span className="hidden sm:inline">Overview</span>
@@ -92,6 +92,10 @@ const Admin = () => {
             <TabsTrigger value="commands" className="gap-2">
               <CreditCard className="w-4 h-4" />
               <span className="hidden sm:inline">Commands</span>
+            </TabsTrigger>
+            <TabsTrigger value="chat" className="gap-2">
+              <Bot className="w-4 h-4" />
+              <span className="hidden sm:inline">AI Chat</span>
             </TabsTrigger>
           </TabsList>
 
@@ -113,6 +117,10 @@ const Admin = () => {
 
           <TabsContent value="commands" className="space-y-6">
             <AdminCommands />
+          </TabsContent>
+
+          <TabsContent value="chat" className="space-y-6">
+            <AdminAIChat />
           </TabsContent>
         </Tabs>
       </main>
