@@ -15,6 +15,11 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
+import { StreakDisplay } from "@/components/StreakDisplay";
+import { DailyRewardBanner } from "@/components/DailyRewardBanner";
+import { ExitIntentPopup } from "@/components/ExitIntentPopup";
+import { WelcomeBackModal } from "@/components/WelcomeBackModal";
+import { useStreakMilestoneToast } from "@/components/StreakMilestoneToast";
 const Dashboard = () => {
   const [summary, setSummary] = useState<string>("");
   const [bookTitle, setBookTitle] = useState<string>("");
@@ -24,14 +29,19 @@ const Dashboard = () => {
   const [activeGoal, setActiveGoal] = useState<any>(null);
   const [readingPlanBooks, setReadingPlanBooks] = useState<any[]>([]);
   const [readingStreak, setReadingStreak] = useState(0);
+  const [hasReadToday, setHasReadToday] = useState(false);
+  const [lastReadDate, setLastReadDate] = useState<Date | null>(null);
+  const [userName, setUserName] = useState<string | undefined>();
   const [showSearch, setShowSearch] = useState(true);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const lastScrollY = useRef(0);
+  const previousStreak = useRef(0);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
   const { isAdmin } = useAdminCheck();
+  const { checkAndShowMilestone } = useStreakMilestoneToast();
   useActivityTracker();
 
   useEffect(() => {
@@ -120,20 +130,66 @@ const Dashboard = () => {
       );
     }
 
-    // Calculate reading streak (simplified - just show days with activity)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const { data: recentSessions } = await supabase
+    // Calculate reading streak - consecutive days
+    const { data: allSessions } = await supabase
       .from('reading_sessions')
       .select('last_read_at')
       .eq('user_id', user.id)
-      .gte('last_read_at', thirtyDaysAgo.toISOString());
+      .order('last_read_at', { ascending: false });
 
-    if (recentSessions) {
-      const uniqueDays = new Set(
-        recentSessions.map(s => new Date(s.last_read_at).toDateString())
-      );
-      setReadingStreak(uniqueDays.size);
+    if (allSessions && allSessions.length > 0) {
+      // Get unique days
+      const uniqueDays = [...new Set(
+        allSessions.map(s => new Date(s.last_read_at).toDateString())
+      )].map(d => new Date(d)).sort((a, b) => b.getTime() - a.getTime());
+
+      // Check if user read today
+      const today = new Date().toDateString();
+      const readToday = uniqueDays.some(d => d.toDateString() === today);
+      setHasReadToday(readToday);
+      
+      // Set last read date
+      if (uniqueDays.length > 0) {
+        setLastReadDate(uniqueDays[0]);
+      }
+
+      // Calculate consecutive streak
+      let streak = 0;
+      const todayDate = new Date();
+      todayDate.setHours(0, 0, 0, 0);
+      
+      for (let i = 0; i < uniqueDays.length; i++) {
+        const checkDate = new Date(todayDate);
+        checkDate.setDate(checkDate.getDate() - i);
+        
+        if (uniqueDays.some(d => d.toDateString() === checkDate.toDateString())) {
+          streak++;
+        } else if (i === 0 && !readToday) {
+          // If user hasn't read today, start checking from yesterday
+          continue;
+        } else {
+          break;
+        }
+      }
+      
+      previousStreak.current = readingStreak;
+      setReadingStreak(streak);
+      
+      // Check for milestone toast
+      if (streak > previousStreak.current) {
+        checkAndShowMilestone(streak);
+      }
+    }
+
+    // Get user name for personalized messaging
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, username')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    
+    if (profile) {
+      setUserName(profile.full_name || profile.username || undefined);
     }
   };
 
@@ -253,10 +309,11 @@ const Dashboard = () => {
                   <span className="text-xs text-muted-foreground">Books:</span>
                   <span className="text-sm font-bold text-primary" aria-label={`${booksRead} books completed`}>{booksRead}</span>
                 </div>
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg glass-morphism border border-accent/20">
-                  <span className="text-xs text-muted-foreground">Streak:</span>
-                  <span className="text-sm font-bold text-accent" aria-label={`${readingStreak} day reading streak`}>{readingStreak}</span>
-                </div>
+                <StreakDisplay 
+                  streak={readingStreak} 
+                  lastReadDate={lastReadDate}
+                  showUrgency={!hasReadToday}
+                />
               </div>
             </div>
 
@@ -300,9 +357,12 @@ const Dashboard = () => {
                         <div className="text-xl font-bold text-primary" aria-label={`${booksRead} books completed`}>{booksRead}</div>
                         <div className="text-xs text-muted-foreground">Books</div>
                       </div>
-                      <div className="flex-1 text-center p-2 rounded-lg glass-morphism border border-accent/20">
-                        <div className="text-xl font-bold text-accent" aria-label={`${readingStreak} day streak`}>{readingStreak}</div>
-                        <div className="text-xs text-muted-foreground">Streak</div>
+                      <div className="flex-1">
+                        <StreakDisplay 
+                          streak={readingStreak} 
+                          lastReadDate={lastReadDate}
+                          showUrgency={false}
+                        />
                       </div>
                     </div>
                     <NavLinks />
@@ -353,6 +413,13 @@ const Dashboard = () => {
       {/* Main Content */}
       <main id="main-content" className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8" role="main">
         <div className="space-y-6 sm:space-y-8 lg:space-y-10">
+          {/* Daily Reward Banner - Urgency */}
+          {!hasReadToday && readingStreak > 0 && (
+            <DailyRewardBanner 
+              streak={readingStreak} 
+              hasReadToday={hasReadToday} 
+            />
+          )}
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
             {/* Left Column */}
@@ -399,6 +466,22 @@ const Dashboard = () => {
 
       {/* Reading Plan Popup for new users */}
       <ReadingPlanPopup />
+
+      {/* Exit Intent Popup - Urgency when leaving */}
+      <ExitIntentPopup 
+        streak={readingStreak} 
+        hasReadToday={hasReadToday}
+        userName={userName}
+      />
+
+      {/* Welcome Back Modal - Celebrate returns */}
+      <WelcomeBackModal 
+        streak={readingStreak}
+        hasReadToday={hasReadToday}
+        lastReadDate={lastReadDate}
+        userName={userName}
+        booksRead={booksRead}
+      />
     </div>
   );
 };
