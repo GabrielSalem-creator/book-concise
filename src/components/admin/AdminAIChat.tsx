@@ -166,33 +166,24 @@ export const AdminAIChat = () => {
     setLoading(true);
 
     try {
-      // Build context with stats
-      const statsContext = stats ? `
-Current Platform Data:
-- Total Users: ${stats.totalUsers}
-- Currently Active Users: ${stats.activeUsers}
-- New Users Today: ${stats.newUsersToday}
-- New Users This Week: ${stats.newUsersThisWeek}
-- Total Books: ${stats.totalBooks}
-- Total Sessions: ${stats.totalSessions}
-- Total Summaries Generated: ${stats.totalSummaries}
-- Avg Sessions Per User: ${stats.avgSessionsPerUser}
-- Most Read Books: ${stats.mostReadBooks.map(b => `${b.title} (${b.count} reads)`).join(', ')}
-- Recent Activity Types: ${stats.recentActivity.map(a => `${a.action} (${a.count}x)`).join(', ')}
-` : 'Platform data unavailable.';
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-ai`, {
+      const response = await fetch(`https://rldrcongresqaqbebceb.supabase.co/functions/v1/admin-ai-chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: `${statsContext}\n\nUser question: ${messageToSend}` },
-            ...messages.map(m => ({ role: m.role, content: m.content }))
-          ]
+            ...messages.map(m => ({ role: m.role, content: m.content })),
+            { role: 'user', content: messageToSend }
+          ],
+          platformStats: stats
         })
       });
 

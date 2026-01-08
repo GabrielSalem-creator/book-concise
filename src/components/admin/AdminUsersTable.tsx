@@ -114,8 +114,30 @@ export const AdminUsersTable = () => {
 
   const deleteUser = async (user: UserData) => {
     try {
-      // Delete all user data
-      await Promise.all([
+      // Delete all user data in order to avoid FK constraint issues
+      // First get goals to delete reading_plan_books
+      const { data: goals } = await supabase
+        .from('goals')
+        .select('id')
+        .eq('user_id', user.user_id);
+
+      if (goals?.length) {
+        const goalIds = goals.map(g => g.id);
+        const { error: rpbError } = await supabase
+          .from('reading_plan_books')
+          .delete()
+          .in('goal_id', goalIds);
+        if (rpbError) console.error('Error deleting reading_plan_books:', rpbError);
+        
+        const { error: goalsError } = await supabase
+          .from('goals')
+          .delete()
+          .eq('user_id', user.user_id);
+        if (goalsError) console.error('Error deleting goals:', goalsError);
+      }
+
+      // Delete other user data
+      const deleteResults = await Promise.allSettled([
         supabase.from('user_preferences').delete().eq('user_id', user.user_id),
         supabase.from('user_sessions').delete().eq('user_id', user.user_id),
         supabase.from('user_activity').delete().eq('user_id', user.user_id),
@@ -123,28 +145,26 @@ export const AdminUsersTable = () => {
         supabase.from('bookmarks').delete().eq('user_id', user.user_id),
         supabase.from('chat_messages').delete().eq('user_id', user.user_id),
         supabase.from('user_roles').delete().eq('user_id', user.user_id),
+        supabase.from('categories').delete().eq('user_id', user.user_id),
       ]);
 
-      // Delete goals and reading plan books
-      const { data: goals } = await supabase
-        .from('goals')
-        .select('id')
+      // Log any errors
+      deleteResults.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`Delete operation ${index} failed:`, result.reason);
+        }
+      });
+
+      // Delete profile last
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
         .eq('user_id', user.user_id);
 
-      if (goals?.length) {
-        await supabase
-          .from('reading_plan_books')
-          .delete()
-          .in('goal_id', goals.map(g => g.id));
-        
-        await supabase
-          .from('goals')
-          .delete()
-          .eq('user_id', user.user_id);
+      if (profileError) {
+        console.error('Error deleting profile:', profileError);
+        throw profileError;
       }
-
-      // Delete profile
-      await supabase.from('profiles').delete().eq('user_id', user.user_id);
 
       toast({
         title: 'User deleted',
@@ -156,7 +176,7 @@ export const AdminUsersTable = () => {
       console.error('Error deleting user:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete user.',
+        description: 'Failed to delete user. Check console for details.',
         variant: 'destructive',
       });
     }
