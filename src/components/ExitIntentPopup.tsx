@@ -76,7 +76,7 @@ export const ExitIntentPopup = ({ streak, hasReadToday, userName }: ExitIntentPo
 
   const handleContinueReading = () => {
     setIsOpen(false);
-    navigate('/explore');
+    navigate('/dashboard');
   };
 
   if (hasReadToday) return null;

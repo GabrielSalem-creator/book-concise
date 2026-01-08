@@ -114,7 +114,7 @@ export const DailyRewardBanner = ({ streak, hasReadToday, onDismiss }: DailyRewa
 
           {/* CTA */}
           <Button 
-            onClick={() => navigate('/explore')}
+            onClick={() => navigate('/dashboard')}
             className={cn(
               "flex-shrink-0 gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90",
               isAnimating && "animate-pulse"

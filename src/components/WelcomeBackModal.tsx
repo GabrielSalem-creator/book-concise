@@ -49,7 +49,7 @@ export const WelcomeBackModal = ({
 
   const handleStartReading = () => {
     setIsOpen(false);
-    navigate('/explore');
+    navigate('/dashboard');
   };
 
   const getStreakMessage = () => {
