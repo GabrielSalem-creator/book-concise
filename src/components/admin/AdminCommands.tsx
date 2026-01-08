@@ -89,14 +89,27 @@ export const AdminCommands = () => {
       if (!profile) {
         toast({
           title: 'User not found',
-          description: 'No user found with that email.',
+          description: 'No user found with that email/username.',
           variant: 'destructive',
         });
         setLoading(null);
         return;
       }
 
-      await Promise.all([
+      // Delete goals and reading plan books first (FK constraint)
+      const { data: goals } = await supabase
+        .from('goals')
+        .select('id')
+        .eq('user_id', profile.user_id);
+
+      if (goals?.length) {
+        const goalIds = goals.map(g => g.id);
+        await supabase.from('reading_plan_books').delete().in('goal_id', goalIds);
+        await supabase.from('goals').delete().eq('user_id', profile.user_id);
+      }
+
+      // Delete other user data
+      await Promise.allSettled([
         supabase.from('user_preferences').delete().eq('user_id', profile.user_id),
         supabase.from('user_sessions').delete().eq('user_id', profile.user_id),
         supabase.from('user_activity').delete().eq('user_id', profile.user_id),
@@ -104,26 +117,18 @@ export const AdminCommands = () => {
         supabase.from('bookmarks').delete().eq('user_id', profile.user_id),
         supabase.from('chat_messages').delete().eq('user_id', profile.user_id),
         supabase.from('user_roles').delete().eq('user_id', profile.user_id),
+        supabase.from('categories').delete().eq('user_id', profile.user_id),
       ]);
 
-      const { data: goals } = await supabase
-        .from('goals')
-        .select('id')
+      // Delete profile last
+      const { error: deleteProfileError } = await supabase
+        .from('profiles')
+        .delete()
         .eq('user_id', profile.user_id);
 
-      if (goals?.length) {
-        await supabase
-          .from('reading_plan_books')
-          .delete()
-          .in('goal_id', goals.map(g => g.id));
-        
-        await supabase
-          .from('goals')
-          .delete()
-          .eq('user_id', profile.user_id);
+      if (deleteProfileError) {
+        throw deleteProfileError;
       }
-
-      await supabase.from('profiles').delete().eq('user_id', profile.user_id);
 
       toast({
         title: 'User data deleted',
@@ -135,7 +140,7 @@ export const AdminCommands = () => {
       console.error('Error deleting user:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete user data.',
+        description: 'Failed to delete user data. Check console for details.',
         variant: 'destructive',
       });
     } finally {

@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.chat-with-ai]
 verify_jwt = true
+
+[functions.admin-ai-chat]
+verify_jwt = false
+
+[functions.chat-with-book]
+verify_jwt = false
