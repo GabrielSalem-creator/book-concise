@@ -342,6 +342,14 @@ const Dashboard = () => {
 
             {/* Mobile Navigation */}
             <div className="flex lg:hidden items-center gap-1.5">
+              {/* Mobile Streak Display - Always visible */}
+              <div className="mr-1">
+                <StreakDisplay 
+                  streak={readingStreak} 
+                  lastReadDate={lastReadDate}
+                  showUrgency={!hasReadToday}
+                />
+              </div>
               <ThemeToggle />
               <AccountSettings />
               <Sheet>
@@ -352,18 +360,33 @@ const Dashboard = () => {
                 </SheetTrigger>
                 <SheetContent className="glass-morphism w-[280px]" aria-label="Navigation menu">
                   <nav className="flex flex-col gap-3 mt-6" aria-label="Mobile navigation">
-                    <div className="flex gap-2 mb-3" role="status" aria-label="Reading statistics">
-                      <div className="flex-1 text-center p-2 rounded-lg glass-morphism border border-primary/20">
-                        <div className="text-xl font-bold text-primary" aria-label={`${booksRead} books completed`}>{booksRead}</div>
-                        <div className="text-xs text-muted-foreground">Books</div>
-                      </div>
-                      <div className="flex-1">
+                    {/* Mobile Stats Summary */}
+                    <div className="p-3 rounded-xl bg-gradient-to-r from-primary/20 via-accent/10 to-secondary/20 border border-primary/30 mb-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-foreground">Your Progress</span>
                         <StreakDisplay 
                           streak={readingStreak} 
                           lastReadDate={lastReadDate}
                           showUrgency={false}
                         />
                       </div>
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <div className="p-2 rounded-lg bg-background/50">
+                          <div className="text-lg font-bold text-primary">{booksRead}</div>
+                          <div className="text-xs text-muted-foreground">Books Read</div>
+                        </div>
+                        <div className="p-2 rounded-lg bg-background/50">
+                          <div className="text-lg font-bold text-accent">{readingStreak}</div>
+                          <div className="text-xs text-muted-foreground">Day Streak</div>
+                        </div>
+                      </div>
+                      {!hasReadToday && readingStreak > 0 && (
+                        <div className="mt-2 p-2 rounded-lg bg-destructive/10 border border-destructive/30 text-center">
+                          <p className="text-xs text-destructive font-medium animate-pulse">
+                            ⚠️ Read today to keep your streak!
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <NavLinks />
                     <Button 
