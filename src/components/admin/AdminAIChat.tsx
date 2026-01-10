@@ -246,48 +246,50 @@ export const AdminAIChat = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
       {/* Stats Overview */}
       <Card className="glass-morphism border-primary/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-primary" />
-            Live Platform Stats
+        <CardHeader className="pb-2 sm:pb-4">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <BarChart3 className="w-4 h-4 text-primary" />
+            </div>
+            Live Stats
           </CardTitle>
-          <CardDescription>Real-time data for AI analysis</CardDescription>
+          <CardDescription className="text-xs sm:text-sm">Real-time data for AI analysis</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           {loadingStats ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+            <div className="flex items-center justify-center py-6 sm:py-8">
+              <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6 animate-spin text-primary" />
             </div>
           ) : stats ? (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg bg-primary/10">
-                  <div className="text-2xl font-bold">{stats.totalUsers}</div>
-                  <div className="text-xs text-muted-foreground">Total Users</div>
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                <div className="p-2 sm:p-3 rounded-xl bg-primary/10 border border-primary/20">
+                  <div className="text-lg sm:text-2xl font-bold">{stats.totalUsers}</div>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground">Total Users</div>
                 </div>
-                <div className="p-3 rounded-lg bg-green-500/10">
-                  <div className="text-2xl font-bold text-green-600">{stats.activeUsers}</div>
-                  <div className="text-xs text-muted-foreground">Active Now</div>
+                <div className="p-2 sm:p-3 rounded-xl bg-green-500/10 border border-green-500/20">
+                  <div className="text-lg sm:text-2xl font-bold text-green-600">{stats.activeUsers}</div>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground">Active Now</div>
                 </div>
-                <div className="p-3 rounded-lg bg-accent/10">
-                  <div className="text-2xl font-bold">{stats.newUsersThisWeek}</div>
-                  <div className="text-xs text-muted-foreground">New This Week</div>
+                <div className="p-2 sm:p-3 rounded-xl bg-accent/10 border border-accent/20">
+                  <div className="text-lg sm:text-2xl font-bold">{stats.newUsersThisWeek}</div>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground">New This Week</div>
                 </div>
-                <div className="p-3 rounded-lg bg-secondary/10">
-                  <div className="text-2xl font-bold">{stats.totalSummaries}</div>
-                  <div className="text-xs text-muted-foreground">Summaries</div>
+                <div className="p-2 sm:p-3 rounded-xl bg-secondary/10 border border-secondary/20">
+                  <div className="text-lg sm:text-2xl font-bold">{stats.totalSummaries}</div>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground">Summaries</div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <div className="text-sm font-medium">Most Read Books</div>
+                <div className="text-xs sm:text-sm font-medium">Top Books</div>
                 {stats.mostReadBooks.slice(0, 3).map((book, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm">
-                    <span className="truncate flex-1">{book.title}</span>
-                    <Badge variant="outline" className="ml-2">{book.count}</Badge>
+                  <div key={i} className="flex items-center justify-between text-xs sm:text-sm p-2 rounded-lg bg-muted/50">
+                    <span className="truncate flex-1 mr-2">{book.title}</span>
+                    <Badge variant="outline" className="text-[10px] sm:text-xs shrink-0">{book.count}</Badge>
                   </div>
                 ))}
               </div>
@@ -295,7 +297,7 @@ export const AdminAIChat = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="w-full"
+                className="w-full h-9"
                 onClick={loadPlatformStats}
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
@@ -303,7 +305,7 @@ export const AdminAIChat = () => {
               </Button>
             </>
           ) : (
-            <div className="text-center text-muted-foreground py-4">
+            <div className="text-center text-muted-foreground py-4 text-sm">
               Failed to load stats
             </div>
           )}
@@ -312,58 +314,62 @@ export const AdminAIChat = () => {
 
       {/* AI Chat */}
       <Card className="glass-morphism border-primary/20 lg:col-span-2">
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        <CardHeader className="pb-2 sm:pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Bot className="w-5 h-5 text-primary" />
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <div className="p-1.5 rounded-lg bg-gradient-to-br from-primary to-accent">
+                  <Bot className="w-4 h-4 text-primary-foreground" />
+                </div>
                 AccountancyForge AI
               </CardTitle>
-              <CardDescription>
-                Elite forensic accountant & business strategist
+              <CardDescription className="text-xs sm:text-sm mt-1">
+                Forensic accountant & strategist
               </CardDescription>
             </div>
             <Button 
               onClick={runFullAudit}
-              className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
+              className="bg-gradient-to-r from-primary to-accent hover:opacity-90 h-9 text-xs sm:text-sm"
               disabled={loading}
             >
-              <Sparkles className="w-4 h-4 mr-2" />
-              Run Full Audit
+              <Sparkles className="w-4 h-4 mr-1.5" />
+              Run Audit
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <ScrollArea className="h-[400px] rounded-lg border p-4" ref={scrollRef}>
+        <CardContent className="space-y-3 sm:space-y-4 pt-0">
+          <ScrollArea className="h-[300px] sm:h-[350px] lg:h-[400px] rounded-xl border bg-muted/30 p-3 sm:p-4" ref={scrollRef}>
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-                <Bot className="w-12 h-12 text-primary/50" />
+              <div className="flex flex-col items-center justify-center h-full text-center space-y-3 sm:space-y-4">
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20">
+                  <Bot className="w-8 h-8 sm:w-12 sm:h-12 text-primary" />
+                </div>
                 <div>
-                  <h3 className="font-semibold">AccountancyForge Ready</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Click "Run Full Audit" or ask me anything about your platform's health
+                  <h3 className="font-semibold text-sm sm:text-base">AI Ready</h3>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    Click "Run Audit" or ask anything
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2 justify-center">
+                <div className="flex flex-wrap gap-1.5 sm:gap-2 justify-center">
                   <Badge 
                     variant="outline" 
-                    className="cursor-pointer hover:bg-primary/10"
+                    className="cursor-pointer hover:bg-primary/10 text-[10px] sm:text-xs transition-colors"
                     onClick={() => sendMessage('What are the key growth metrics?')}
                   >
                     <TrendingUp className="w-3 h-3 mr-1" />
-                    Growth Metrics
+                    Growth
                   </Badge>
                   <Badge 
                     variant="outline" 
-                    className="cursor-pointer hover:bg-primary/10"
+                    className="cursor-pointer hover:bg-primary/10 text-[10px] sm:text-xs transition-colors"
                     onClick={() => sendMessage('What risks should I be aware of?')}
                   >
                     <AlertTriangle className="w-3 h-3 mr-1" />
-                    Risk Analysis
+                    Risks
                   </Badge>
                   <Badge 
                     variant="outline" 
-                    className="cursor-pointer hover:bg-primary/10"
+                    className="cursor-pointer hover:bg-primary/10 text-[10px] sm:text-xs transition-colors"
                     onClick={() => sendMessage('Give me quick wins for improvement')}
                   >
                     <Lightbulb className="w-3 h-3 mr-1" />

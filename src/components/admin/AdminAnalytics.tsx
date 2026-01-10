@@ -248,82 +248,94 @@ export const AdminAnalytics = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Card className="glass-morphism border-primary/20">
-          <CardContent className="p-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        <Card className="glass-morphism border-primary/20 hover:border-primary/40 transition-all hover:shadow-lg hover:shadow-primary/10">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <Users className="w-5 h-5 text-primary" />
+              <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+              </div>
               {stats.userGrowth !== 0 && (
-                <Badge variant={stats.userGrowth > 0 ? 'default' : 'destructive'} className="gap-1">
+                <Badge variant={stats.userGrowth > 0 ? 'default' : 'destructive'} className="gap-1 text-xs">
                   {stats.userGrowth > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
                   {Math.abs(stats.userGrowth)}%
                 </Badge>
               )}
             </div>
-            <div className="mt-2">
-              <div className="text-2xl font-bold">{stats.totalUsers}</div>
-              <div className="text-xs text-muted-foreground">Total Users</div>
+            <div className="mt-2 sm:mt-3">
+              <div className="text-xl sm:text-2xl font-bold">{stats.totalUsers}</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground">Total Users</div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="glass-morphism border-primary/20">
-          <CardContent className="p-4">
+        <Card className="glass-morphism border-green-500/20 hover:border-green-500/40 transition-all hover:shadow-lg hover:shadow-green-500/10">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <Activity className="w-5 h-5 text-green-500" />
-              <Badge className="bg-green-500">{stats.activeNow}</Badge>
+              <div className="p-1.5 sm:p-2 rounded-lg bg-green-500/10">
+                <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+              </div>
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             </div>
-            <div className="mt-2">
-              <div className="text-2xl font-bold">{stats.activeNow}</div>
-              <div className="text-xs text-muted-foreground">Active Now</div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass-morphism border-primary/20">
-          <CardContent className="p-4">
-            <Book className="w-5 h-5 text-accent" />
-            <div className="mt-2">
-              <div className="text-2xl font-bold">{stats.totalBooks}</div>
-              <div className="text-xs text-muted-foreground">Total Books</div>
+            <div className="mt-2 sm:mt-3">
+              <div className="text-xl sm:text-2xl font-bold text-green-600">{stats.activeNow}</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground">Active Now</div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="glass-morphism border-primary/20">
-          <CardContent className="p-4">
-            <TrendingUp className="w-5 h-5 text-secondary" />
-            <div className="mt-2">
-              <div className="text-2xl font-bold">{stats.totalSessions}</div>
-              <div className="text-xs text-muted-foreground">Total Sessions</div>
+        <Card className="glass-morphism border-accent/20 hover:border-accent/40 transition-all hover:shadow-lg hover:shadow-accent/10">
+          <CardContent className="p-3 sm:p-4">
+            <div className="p-1.5 sm:p-2 rounded-lg bg-accent/10 w-fit">
+              <Book className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
+            </div>
+            <div className="mt-2 sm:mt-3">
+              <div className="text-xl sm:text-2xl font-bold">{stats.totalBooks}</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground">Total Books</div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="glass-morphism border-primary/20 col-span-2">
-          <CardContent className="p-4">
-            <BarChart3 className="w-5 h-5 text-primary" />
-            <div className="mt-2">
-              <div className="text-2xl font-bold">{stats.totalSummaries}</div>
-              <div className="text-xs text-muted-foreground">Summaries Generated</div>
+        <Card className="glass-morphism border-secondary/20 hover:border-secondary/40 transition-all hover:shadow-lg hover:shadow-secondary/10">
+          <CardContent className="p-3 sm:p-4">
+            <div className="p-1.5 sm:p-2 rounded-lg bg-secondary/10 w-fit">
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-secondary" />
+            </div>
+            <div className="mt-2 sm:mt-3">
+              <div className="text-xl sm:text-2xl font-bold">{stats.totalSessions}</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground">Total Sessions</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-morphism border-primary/20 hover:border-primary/40 transition-all hover:shadow-lg hover:shadow-primary/10 col-span-2">
+          <CardContent className="p-3 sm:p-4">
+            <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10 w-fit">
+              <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+            </div>
+            <div className="mt-2 sm:mt-3">
+              <div className="text-xl sm:text-2xl font-bold">{stats.totalSummaries}</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground">Summaries Generated</div>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Chart Controls */}
-      <Card className="glass-morphism border-primary/20">
-        <CardHeader>
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
+      <Card className="glass-morphism border-primary/20 overflow-hidden">
+        <CardHeader className="pb-2 sm:pb-4">
+          <div className="flex flex-col gap-4">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <div className="p-1.5 rounded-lg bg-primary/10">
+                <TrendingUp className="w-4 h-4 text-primary" />
+              </div>
               Analytics Chart
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               <Select value={xMetric} onValueChange={(v) => setXMetric(v as Metric)}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-[130px] sm:w-[160px] h-9 text-xs sm:text-sm">
                   <SelectValue placeholder="Select metric" />
                 </SelectTrigger>
                 <SelectContent>
@@ -335,7 +347,7 @@ export const AdminAnalytics = () => {
               </Select>
 
               <Select value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
-                <SelectTrigger className="w-[120px]">
+                <SelectTrigger className="w-[100px] sm:w-[120px] h-9 text-xs sm:text-sm">
                   <SelectValue placeholder="Granularity" />
                 </SelectTrigger>
                 <SelectContent>
@@ -346,7 +358,7 @@ export const AdminAnalytics = () => {
               </Select>
 
               <Select value={timeFrame} onValueChange={(v) => setTimeFrame(v as TimeFrame)}>
-                <SelectTrigger className="w-[120px]">
+                <SelectTrigger className="w-[100px] sm:w-[120px] h-9 text-xs sm:text-sm">
                   <SelectValue placeholder="Time frame" />
                 </SelectTrigger>
                 <SelectContent>
@@ -357,45 +369,51 @@ export const AdminAnalytics = () => {
                 </SelectContent>
               </Select>
 
-              <Button variant="outline" size="sm" onClick={exportChartData}>
-                <Download className="w-4 h-4 mr-2" />
-                Export
+              <Button variant="outline" size="sm" onClick={exportChartData} className="h-9 text-xs sm:text-sm">
+                <Download className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Export</span>
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0">
           {loading ? (
-            <div className="h-[400px] flex items-center justify-center">
-              <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+            <div className="h-[250px] sm:h-[350px] lg:h-[400px] flex items-center justify-center">
+              <div className="flex flex-col items-center gap-2">
+                <RefreshCw className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-primary" />
+                <span className="text-xs sm:text-sm text-muted-foreground">Loading data...</span>
+              </div>
             </div>
           ) : (
-            <div className="h-[400px]">
+            <div className="h-[250px] sm:h-[350px] lg:h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
                       <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
                   <XAxis 
                     dataKey="label" 
                     stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
+                    fontSize={10}
+                    tickMargin={8}
                   />
                   <YAxis 
                     stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
+                    fontSize={10}
+                    tickMargin={8}
                   />
                   <Tooltip 
                     contentStyle={{
                       backgroundColor: 'hsl(var(--popover))',
                       border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                     }}
-                    labelStyle={{ color: 'hsl(var(--foreground))' }}
+                    labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
                   />
                   <Area 
                     type="monotone" 
@@ -410,7 +428,7 @@ export const AdminAnalytics = () => {
               </ResponsiveContainer>
             </div>
           )}
-          <div className="text-center text-sm text-muted-foreground mt-4">
+          <div className="text-center text-xs sm:text-sm text-muted-foreground mt-3 sm:mt-4">
             {metricLabels[xMetric]} over time ({granularity})
           </div>
         </CardContent>

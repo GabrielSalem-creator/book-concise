@@ -210,30 +210,30 @@ export const AdminBooksTable = () => {
 
   return (
     <Card className="glass-morphism border-primary/20">
-      <CardHeader>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <CardTitle className="flex items-center gap-2">
-            <Book className="w-5 h-5 text-primary" />
+      <CardHeader className="pb-3 sm:pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Book className="w-4 h-4 text-primary" />
+            </div>
             Book Analytics
-            <Badge variant="secondary">{books.length} books</Badge>
+            <Badge variant="secondary" className="text-xs">{books.length}</Badge>
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-muted-foreground" />
               <Input
                 placeholder="Search books..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 w-[200px]"
+                className="pl-8 sm:pl-9 w-[140px] sm:w-[200px] h-9 text-xs sm:text-sm"
               />
             </div>
-            <Button variant="outline" size="sm" onClick={loadBooks}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+            <Button variant="outline" size="sm" onClick={loadBooks} className="h-9">
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
-            <Button variant="outline" size="sm" onClick={exportToCSV}>
-              <Download className="w-4 h-4 mr-2" />
-              Export CSV
+            <Button variant="outline" size="sm" onClick={exportToCSV} className="h-9">
+              <Download className="w-4 h-4" />
             </Button>
           </div>
         </div>
