@@ -389,6 +389,16 @@ const Dashboard = () => {
                       )}
                     </div>
                     <NavLinks />
+                    {isAdmin && (
+                      <Button 
+                        variant="default" 
+                        onClick={() => navigate('/admin')} 
+                        className="w-full justify-start bg-gradient-to-r from-primary to-accent hover:opacity-90"
+                      >
+                        <Shield className="w-4 h-4 mr-2" aria-hidden="true" />
+                        Admin Dashboard
+                      </Button>
+                    )}
                     <Button 
                       variant="outline" 
                       onClick={handleSignOut} 

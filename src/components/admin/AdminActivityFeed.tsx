@@ -128,17 +128,19 @@ export const AdminActivityFeed = () => {
 
   return (
     <Card className="glass-morphism border-primary/20">
-      <CardHeader>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-primary" />
+      <CardHeader className="pb-3 sm:pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Activity className="w-4 h-4 text-primary" />
+            </div>
             Activity Feed
-            <Badge variant="secondary">{activities.length} events</Badge>
+            <Badge variant="secondary" className="text-xs">{activities.length}</Badge>
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-[150px]">
-                <Filter className="w-4 h-4 mr-2" />
+              <SelectTrigger className="w-[130px] sm:w-[150px] h-9 text-xs sm:text-sm">
+                <Filter className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                 <SelectValue placeholder="Filter" />
               </SelectTrigger>
               <SelectContent>
@@ -149,50 +151,52 @@ export const AdminActivityFeed = () => {
                 <SelectItem value="login">Logins</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" onClick={loadActivities}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+            <Button variant="outline" size="sm" onClick={loadActivities} className="h-9">
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
-            <Button variant="outline" size="sm" onClick={exportToCSV}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+            <Button variant="outline" size="sm" onClick={exportToCSV} className="h-9">
+              <Download className="w-4 h-4" />
             </Button>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[600px]">
+      <CardContent className="pt-0">
+        <ScrollArea className="h-[400px] sm:h-[500px] lg:h-[600px]">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+              <div className="flex flex-col items-center gap-2">
+                <RefreshCw className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-primary" />
+                <span className="text-xs sm:text-sm text-muted-foreground">Loading...</span>
+              </div>
             </div>
           ) : activities.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              No activity recorded yet
+              <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No activity recorded yet</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {activities.map((activity) => (
                 <div 
                   key={activity.id}
-                  className="flex items-start gap-4 p-4 rounded-lg border border-border/50 bg-card/50 hover:bg-card transition-colors"
+                  className="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-card hover:border-primary/30 transition-all"
                 >
-                  <div className={`p-2 rounded-lg ${getActivityColor(activity.action_type)}`}>
+                  <div className={`p-1.5 sm:p-2 rounded-lg shrink-0 ${getActivityColor(activity.action_type)}`}>
                     {getActivityIcon(activity.action_type)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{activity.user_name}</span>
-                      <Badge variant="outline" className="text-xs">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <span className="font-medium text-sm sm:text-base">{activity.user_name}</span>
+                      <Badge variant="outline" className="text-[10px] sm:text-xs">
                         {activity.action_type.replace('_', ' ')}
                       </Badge>
                     </div>
                     {activity.action_details && (
-                      <p className="text-sm text-muted-foreground mt-1 truncate">
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-1 truncate">
                         {JSON.stringify(activity.action_details)}
                       </p>
                     )}
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
                       {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
                     </p>
                   </div>

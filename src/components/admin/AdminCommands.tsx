@@ -80,16 +80,23 @@ export const AdminCommands = () => {
 
     setLoading('delete');
     try {
-      const { data: profile, error: profileError } = await supabase
+      // Search by username (email) OR full_name
+      const { data: profiles, error: profileError } = await supabase
         .from('profiles')
-        .select('user_id, full_name')
-        .eq('username', deleteUserEmail)
-        .maybeSingle();
+        .select('user_id, full_name, username')
+        .or(`username.ilike.%${deleteUserEmail}%,full_name.ilike.%${deleteUserEmail}%`);
+
+      if (profileError) throw profileError;
+
+      const profile = profiles?.find(p => 
+        p.username?.toLowerCase() === deleteUserEmail.toLowerCase() ||
+        p.full_name?.toLowerCase() === deleteUserEmail.toLowerCase()
+      ) || profiles?.[0];
 
       if (!profile) {
         toast({
           title: 'User not found',
-          description: 'No user found with that email/username.',
+          description: 'No user found with that email/username. Try searching with partial match.',
           variant: 'destructive',
         });
         setLoading(null);
@@ -160,16 +167,21 @@ export const AdminCommands = () => {
 
     setLoading('credits');
     try {
-      const { data: profile } = await supabase
+      // Search by username (email) OR full_name
+      const { data: profiles } = await supabase
         .from('profiles')
-        .select('user_id, full_name')
-        .eq('username', creditsUserEmail)
-        .maybeSingle();
+        .select('user_id, full_name, username')
+        .or(`username.ilike.%${creditsUserEmail}%,full_name.ilike.%${creditsUserEmail}%`);
+
+      const profile = profiles?.find(p => 
+        p.username?.toLowerCase() === creditsUserEmail.toLowerCase() ||
+        p.full_name?.toLowerCase() === creditsUserEmail.toLowerCase()
+      ) || profiles?.[0];
 
       if (!profile) {
         toast({
           title: 'User not found',
-          description: 'No user found with that email.',
+          description: 'No user found with that email/name.',
           variant: 'destructive',
         });
         setLoading(null);
@@ -214,17 +226,21 @@ export const AdminCommands = () => {
 
     setLoading('admin');
     try {
-      // Find user by email
-      const { data: profile } = await supabase
+      // Search by username (email) OR full_name
+      const { data: profiles } = await supabase
         .from('profiles')
-        .select('user_id, full_name')
-        .eq('username', adminEmail)
-        .maybeSingle();
+        .select('user_id, full_name, username')
+        .or(`username.ilike.%${adminEmail}%,full_name.ilike.%${adminEmail}%`);
+
+      const profile = profiles?.find(p => 
+        p.username?.toLowerCase() === adminEmail.toLowerCase() ||
+        p.full_name?.toLowerCase() === adminEmail.toLowerCase()
+      ) || profiles?.[0];
 
       if (!profile) {
         toast({
           title: 'User not found',
-          description: 'No user found with that email. They must sign up first.',
+          description: 'No user found with that email/name. They must sign up first.',
           variant: 'destructive',
         });
         setLoading(null);
@@ -325,9 +341,9 @@ export const AdminCommands = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
       {/* Create User */}
-      <Card className="glass-morphism border-primary/20">
+      <Card className="glass-morphism border-primary/20 hover:border-primary/40 transition-colors">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <UserPlus className="w-5 h-5 text-primary" />
@@ -380,7 +396,7 @@ export const AdminCommands = () => {
       </Card>
 
       {/* Delete User */}
-      <Card className="glass-morphism border-destructive/20">
+      <Card className="glass-morphism border-destructive/20 hover:border-destructive/40 transition-colors">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <Trash2 className="w-5 h-5" />
@@ -441,7 +457,7 @@ export const AdminCommands = () => {
       </Card>
 
       {/* Manage Credits */}
-      <Card className="glass-morphism border-accent/20">
+      <Card className="glass-morphism border-accent/20 hover:border-accent/40 transition-colors">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-accent" />
@@ -487,7 +503,7 @@ export const AdminCommands = () => {
       </Card>
 
       {/* Add Admin */}
-      <Card className="glass-morphism border-primary/20">
+      <Card className="glass-morphism border-primary/20 hover:border-primary/40 transition-colors">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-primary" />
@@ -521,7 +537,7 @@ export const AdminCommands = () => {
       </Card>
 
       {/* Quick Actions */}
-      <Card className="glass-morphism border-secondary/20 lg:col-span-2">
+      <Card className="glass-morphism border-secondary/20 hover:border-secondary/40 transition-colors md:col-span-2">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Terminal className="w-5 h-5 text-secondary" />
