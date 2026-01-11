@@ -20,6 +20,7 @@ import { DailyRewardBanner } from "@/components/DailyRewardBanner";
 import { ExitIntentPopup } from "@/components/ExitIntentPopup";
 import { WelcomeBackModal } from "@/components/WelcomeBackModal";
 import { useStreakMilestoneToast } from "@/components/StreakMilestoneToast";
+import { FeedbackPopup } from "@/components/FeedbackPopup";
 const Dashboard = () => {
   const [summary, setSummary] = useState<string>("");
   const [bookTitle, setBookTitle] = useState<string>("");
@@ -340,22 +341,20 @@ const Dashboard = () => {
               </Button>
             </nav>
 
-            {/* Mobile Navigation */}
-            <div className="flex lg:hidden items-center gap-1.5">
-              {/* Mobile Streak Display - Always visible */}
-              <div className="mr-1">
-                <StreakDisplay 
-                  streak={readingStreak} 
-                  lastReadDate={lastReadDate}
-                  showUrgency={!hasReadToday}
-                />
-              </div>
+            {/* Mobile Navigation - Clean spacing */}
+            <div className="flex lg:hidden items-center gap-1">
+              {/* Mobile Streak Display */}
+              <StreakDisplay 
+                streak={readingStreak} 
+                lastReadDate={lastReadDate}
+                showUrgency={false}
+              />
               <ThemeToggle />
               <AccountSettings />
               <Sheet>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Open navigation menu">
-                    <Menu className="w-5 h-5" aria-hidden="true" />
+                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Open navigation menu">
+                    <Menu className="w-4 h-4" aria-hidden="true" />
                   </Button>
                 </SheetTrigger>
                 <SheetContent className="glass-morphism w-[280px]" aria-label="Navigation menu">
@@ -515,6 +514,9 @@ const Dashboard = () => {
         userName={userName}
         booksRead={booksRead}
       />
+
+      {/* Feedback Popup - Collect user feedback */}
+      {user && <FeedbackPopup userId={user.id} />}
     </div>
   );
 };

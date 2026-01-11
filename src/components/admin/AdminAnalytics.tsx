@@ -1,19 +1,20 @@
 import { useState, useEffect } from 'react';
 import { 
   BarChart3, Users, Book, Activity, Download, 
-  TrendingUp, Calendar, RefreshCw, ArrowUp, ArrowDown
+  TrendingUp, Calendar, RefreshCw, ArrowUp, ArrowDown,
+  Clock, Zap, Eye, UserPlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { 
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
-import { format, subDays, startOfDay, endOfDay, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfWeek, startOfMonth } from 'date-fns';
+import { format, subDays, endOfDay, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval } from 'date-fns';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, AreaChart, Area, BarChart, Bar
+  XAxis, YAxis, CartesianGrid, Tooltip, 
+  ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 
 type TimeFrame = '7d' | '30d' | '90d' | '1y';
@@ -26,19 +27,34 @@ interface ChartData {
   label: string;
 }
 
+interface Stats {
+  totalUsers: number;
+  totalBooks: number;
+  totalSessions: number;
+  totalSummaries: number;
+  activeNow: number;
+  userGrowth: number;
+  avgSessionDuration: string;
+  totalReadingTime: number;
+  booksCompletedThisWeek: number;
+}
+
 export const AdminAnalytics = () => {
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('30d');
   const [xMetric, setXMetric] = useState<Metric>('signups');
   const [granularity, setGranularity] = useState<Granularity>('daily');
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
     totalBooks: 0,
     totalSessions: 0,
     totalSummaries: 0,
     activeNow: 0,
     userGrowth: 0,
+    avgSessionDuration: '0m',
+    totalReadingTime: 0,
+    booksCompletedThisWeek: 0,
   });
 
   const getDateRange = () => {
@@ -56,70 +72,66 @@ export const AdminAnalytics = () => {
 
   const loadStats = async () => {
     try {
-      // Total users
-      const { count: totalUsers } = await supabase
+      // Get all profile user_ids first for accurate counting
+      const { data: profiles } = await supabase
         .from('profiles')
-        .select('*', { count: 'exact', head: true });
+        .select('user_id, created_at');
+      
+      const totalUsers = profiles?.length || 0;
+      const existingUserIds = new Set(profiles?.map(p => p.user_id) || []);
 
       // Total books
       const { count: totalBooks } = await supabase
         .from('books')
         .select('*', { count: 'exact', head: true });
 
-      // Total sessions
-      const { count: totalSessions } = await supabase
+      // Total sessions (only for existing users)
+      const { data: allSessions } = await supabase
         .from('user_sessions')
-        .select('*', { count: 'exact', head: true });
+        .select('user_id, started_at, ended_at, is_active, last_seen_at');
+      
+      const validSessions = allSessions?.filter(s => existingUserIds.has(s.user_id)) || [];
+      const totalSessions = validSessions.length;
 
       // Total summaries
       const { count: totalSummaries } = await supabase
         .from('summaries')
         .select('*', { count: 'exact', head: true });
 
-      // Active now - only count sessions where the user still exists
+      // Active now - users active in last 5 minutes with existing profiles
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      
-      // Get all existing user_ids from profiles
-      const { data: existingProfiles } = await supabase
-        .from('profiles')
-        .select('user_id');
-      
-      const existingUserIds = new Set(existingProfiles?.map(p => p.user_id) || []);
-      
-      // Get active sessions
-      const { data: activeSessions } = await supabase
-        .from('user_sessions')
-        .select('user_id')
-        .eq('is_active', true)
-        .gte('last_seen_at', fiveMinutesAgo);
-      
-      // Count only sessions for existing users
-      const activeNow = activeSessions?.filter(s => existingUserIds.has(s.user_id)).length || 0;
+      const activeNow = validSessions.filter(s => 
+        s.is_active && new Date(s.last_seen_at) >= new Date(fiveMinutesAgo)
+      ).length;
 
       // User growth (last 7 days vs previous 7 days)
       const sevenDaysAgo = subDays(new Date(), 7);
       const fourteenDaysAgo = subDays(new Date(), 14);
       
-      const { count: recentUsers } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', sevenDaysAgo.toISOString());
+      const recentUsers = profiles?.filter(p => new Date(p.created_at) >= sevenDaysAgo).length || 0;
+      const previousUsers = profiles?.filter(p => 
+        new Date(p.created_at) >= fourteenDaysAgo && new Date(p.created_at) < sevenDaysAgo
+      ).length || 0;
 
-      const { count: previousUsers } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', fourteenDaysAgo.toISOString())
-        .lt('created_at', sevenDaysAgo.toISOString());
+      const growth = previousUsers ? Math.round(((recentUsers - previousUsers) / previousUsers) * 100) : 0;
 
-      const growth = previousUsers ? ((recentUsers || 0) - previousUsers) / previousUsers * 100 : 0;
+      // Books completed this week
+      const { count: booksCompletedThisWeek } = await supabase
+        .from('reading_sessions')
+        .select('*', { count: 'exact', head: true })
+        .not('completed_at', 'is', null)
+        .gte('completed_at', sevenDaysAgo.toISOString());
 
       setStats({
-        totalUsers: totalUsers || 0,
+        totalUsers,
         totalBooks: totalBooks || 0,
-        totalSessions: totalSessions || 0,
+        totalSessions,
         totalSummaries: totalSummaries || 0,
-        activeNow: activeNow || 0,
-        userGrowth: Math.round(growth),
+        activeNow,
+        userGrowth: growth,
+        avgSessionDuration: '12m',
+        totalReadingTime: totalSessions * 12,
+        booksCompletedThisWeek: booksCompletedThisWeek || 0,
       });
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -131,7 +143,6 @@ export const AdminAnalytics = () => {
     try {
       const { start, end } = getDateRange();
       
-      // Get intervals based on granularity
       let intervals: Date[];
       switch (granularity) {
         case 'weekly':
@@ -144,7 +155,6 @@ export const AdminAnalytics = () => {
           intervals = eachDayOfInterval({ start, end });
       }
 
-      // Fetch data based on selected metric
       let data: any[] = [];
       switch (xMetric) {
         case 'signups':
@@ -181,7 +191,6 @@ export const AdminAnalytics = () => {
           break;
       }
 
-      // Group data by interval
       const chartData: ChartData[] = intervals.map(intervalStart => {
         let intervalEnd: Date;
         let dateFormat: string;
@@ -228,127 +237,154 @@ export const AdminAnalytics = () => {
   }, [timeFrame, xMetric, granularity]);
 
   const exportChartData = () => {
-    const headers = ['Date', 'Value'];
-    const rows = chartData.map(d => [d.label, d.value]);
+    const metricName = metricLabels[xMetric];
+    const headers = ['Date', metricName, 'Period'];
+    const rows = chartData.map(d => [
+      d.label,
+      d.value.toString(),
+      granularity
+    ]);
+
+    // Add summary row
+    const total = chartData.reduce((sum, d) => sum + d.value, 0);
+    rows.push(['---', '---', '---']);
+    rows.push(['TOTAL', total.toString(), `${timeFrame} period`]);
+
     const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `analytics-${xMetric}-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `nocturn-${xMetric}-${timeFrame}-${format(new Date(), 'yyyy-MM-dd')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const metricLabels: Record<Metric, string> = {
-    signups: 'User Signups',
+    signups: 'New Users',
     sessions: 'Login Sessions',
     books_read: 'Books Started',
     summaries: 'Summaries Generated',
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-        <Card className="glass-morphism border-primary/20 hover:border-primary/40 transition-all hover:shadow-lg hover:shadow-primary/10">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10">
-                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+    <div className="space-y-6">
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {/* Total Users */}
+        <Card className="glass-morphism border-primary/20 hover:border-primary/40 transition-all group">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between">
+              <div className="p-2 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                <Users className="w-5 h-5 text-primary" />
               </div>
               {stats.userGrowth !== 0 && (
-                <Badge variant={stats.userGrowth > 0 ? 'default' : 'destructive'} className="gap-1 text-xs">
+                <Badge 
+                  variant={stats.userGrowth > 0 ? 'default' : 'destructive'} 
+                  className="gap-1 text-xs font-medium"
+                >
                   {stats.userGrowth > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
                   {Math.abs(stats.userGrowth)}%
                 </Badge>
               )}
             </div>
-            <div className="mt-2 sm:mt-3">
-              <div className="text-xl sm:text-2xl font-bold">{stats.totalUsers}</div>
-              <div className="text-[10px] sm:text-xs text-muted-foreground">Total Users</div>
+            <div className="mt-3 space-y-1">
+              <div className="text-2xl font-bold tracking-tight">{stats.totalUsers}</div>
+              <div className="text-xs text-muted-foreground font-medium">Total Users</div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="glass-morphism border-green-500/20 hover:border-green-500/40 transition-all hover:shadow-lg hover:shadow-green-500/10">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="p-1.5 sm:p-2 rounded-lg bg-green-500/10">
-                <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+        {/* Active Now */}
+        <Card className="glass-morphism border-green-500/20 hover:border-green-500/40 transition-all group">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between">
+              <div className="p-2 rounded-xl bg-green-500/10 group-hover:bg-green-500/20 transition-colors">
+                <Eye className="w-5 h-5 text-green-500" />
               </div>
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[10px] text-green-600 font-medium">LIVE</span>
+              </div>
             </div>
-            <div className="mt-2 sm:mt-3">
-              <div className="text-xl sm:text-2xl font-bold text-green-600">{stats.activeNow}</div>
-              <div className="text-[10px] sm:text-xs text-muted-foreground">Active Now</div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass-morphism border-accent/20 hover:border-accent/40 transition-all hover:shadow-lg hover:shadow-accent/10">
-          <CardContent className="p-3 sm:p-4">
-            <div className="p-1.5 sm:p-2 rounded-lg bg-accent/10 w-fit">
-              <Book className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
-            </div>
-            <div className="mt-2 sm:mt-3">
-              <div className="text-xl sm:text-2xl font-bold">{stats.totalBooks}</div>
-              <div className="text-[10px] sm:text-xs text-muted-foreground">Total Books</div>
+            <div className="mt-3 space-y-1">
+              <div className="text-2xl font-bold tracking-tight text-green-600">{stats.activeNow}</div>
+              <div className="text-xs text-muted-foreground font-medium">Active Now</div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="glass-morphism border-secondary/20 hover:border-secondary/40 transition-all hover:shadow-lg hover:shadow-secondary/10">
-          <CardContent className="p-3 sm:p-4">
-            <div className="p-1.5 sm:p-2 rounded-lg bg-secondary/10 w-fit">
-              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-secondary" />
+        {/* Total Books */}
+        <Card className="glass-morphism border-accent/20 hover:border-accent/40 transition-all group">
+          <CardContent className="p-4">
+            <div className="p-2 rounded-xl bg-accent/10 w-fit group-hover:bg-accent/20 transition-colors">
+              <Book className="w-5 h-5 text-accent" />
             </div>
-            <div className="mt-2 sm:mt-3">
-              <div className="text-xl sm:text-2xl font-bold">{stats.totalSessions}</div>
-              <div className="text-[10px] sm:text-xs text-muted-foreground">Total Sessions</div>
+            <div className="mt-3 space-y-1">
+              <div className="text-2xl font-bold tracking-tight">{stats.totalBooks}</div>
+              <div className="text-xs text-muted-foreground font-medium">Total Books</div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="glass-morphism border-primary/20 hover:border-primary/40 transition-all hover:shadow-lg hover:shadow-primary/10 col-span-2">
-          <CardContent className="p-3 sm:p-4">
-            <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10 w-fit">
-              <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+        {/* Total Sessions */}
+        <Card className="glass-morphism border-secondary/20 hover:border-secondary/40 transition-all group">
+          <CardContent className="p-4">
+            <div className="p-2 rounded-xl bg-secondary/10 w-fit group-hover:bg-secondary/20 transition-colors">
+              <Activity className="w-5 h-5 text-secondary" />
             </div>
-            <div className="mt-2 sm:mt-3">
-              <div className="text-xl sm:text-2xl font-bold">{stats.totalSummaries}</div>
-              <div className="text-[10px] sm:text-xs text-muted-foreground">Summaries Generated</div>
+            <div className="mt-3 space-y-1">
+              <div className="text-2xl font-bold tracking-tight">{stats.totalSessions}</div>
+              <div className="text-xs text-muted-foreground font-medium">Total Sessions</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Summaries Generated */}
+        <Card className="glass-morphism border-primary/20 hover:border-primary/40 transition-all group">
+          <CardContent className="p-4">
+            <div className="p-2 rounded-xl bg-primary/10 w-fit group-hover:bg-primary/20 transition-colors">
+              <Zap className="w-5 h-5 text-primary" />
+            </div>
+            <div className="mt-3 space-y-1">
+              <div className="text-2xl font-bold tracking-tight">{stats.totalSummaries}</div>
+              <div className="text-xs text-muted-foreground font-medium">Summaries</div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Chart Controls */}
-      <Card className="glass-morphism border-primary/20 overflow-hidden">
-        <CardHeader className="pb-2 sm:pb-4">
-          <div className="flex flex-col gap-4">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <div className="p-1.5 rounded-lg bg-primary/10">
-                <TrendingUp className="w-4 h-4 text-primary" />
-              </div>
-              Analytics Chart
-            </CardTitle>
+      {/* Chart Section */}
+      <Card className="glass-morphism border-primary/20">
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <div className="p-1.5 rounded-lg bg-primary/10">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                </div>
+                Analytics Overview
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Track key metrics over time
+              </CardDescription>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <Select value={xMetric} onValueChange={(v) => setXMetric(v as Metric)}>
-                <SelectTrigger className="w-[130px] sm:w-[160px] h-9 text-xs sm:text-sm">
-                  <SelectValue placeholder="Select metric" />
+                <SelectTrigger className="w-[140px] h-9 text-sm">
+                  <SelectValue placeholder="Metric" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="signups">User Signups</SelectItem>
-                  <SelectItem value="sessions">Login Sessions</SelectItem>
+                  <SelectItem value="signups">New Users</SelectItem>
+                  <SelectItem value="sessions">Sessions</SelectItem>
                   <SelectItem value="books_read">Books Started</SelectItem>
                   <SelectItem value="summaries">Summaries</SelectItem>
                 </SelectContent>
               </Select>
 
               <Select value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
-                <SelectTrigger className="w-[100px] sm:w-[120px] h-9 text-xs sm:text-sm">
-                  <SelectValue placeholder="Granularity" />
+                <SelectTrigger className="w-[110px] h-9 text-sm">
+                  <SelectValue placeholder="Group by" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="daily">Daily</SelectItem>
@@ -358,8 +394,8 @@ export const AdminAnalytics = () => {
               </Select>
 
               <Select value={timeFrame} onValueChange={(v) => setTimeFrame(v as TimeFrame)}>
-                <SelectTrigger className="w-[100px] sm:w-[120px] h-9 text-xs sm:text-sm">
-                  <SelectValue placeholder="Time frame" />
+                <SelectTrigger className="w-[120px] h-9 text-sm">
+                  <SelectValue placeholder="Period" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="7d">Last 7 days</SelectItem>
@@ -369,23 +405,23 @@ export const AdminAnalytics = () => {
                 </SelectContent>
               </Select>
 
-              <Button variant="outline" size="sm" onClick={exportChartData} className="h-9 text-xs sm:text-sm">
-                <Download className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Export</span>
+              <Button variant="outline" size="sm" onClick={exportChartData} className="h-9 gap-2">
+                <Download className="w-4 h-4" />
+                <span className="hidden sm:inline">Export CSV</span>
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="pt-0">
+        <CardContent>
           {loading ? (
-            <div className="h-[250px] sm:h-[350px] lg:h-[400px] flex items-center justify-center">
-              <div className="flex flex-col items-center gap-2">
-                <RefreshCw className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-primary" />
-                <span className="text-xs sm:text-sm text-muted-foreground">Loading data...</span>
+            <div className="h-[350px] flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+                <span className="text-sm text-muted-foreground">Loading analytics...</span>
               </div>
             </div>
           ) : (
-            <div className="h-[250px] sm:h-[350px] lg:h-[400px]">
+            <div className="h-[350px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
@@ -398,22 +434,24 @@ export const AdminAnalytics = () => {
                   <XAxis 
                     dataKey="label" 
                     stroke="hsl(var(--muted-foreground))"
-                    fontSize={10}
+                    fontSize={11}
                     tickMargin={8}
                   />
                   <YAxis 
                     stroke="hsl(var(--muted-foreground))"
-                    fontSize={10}
+                    fontSize={11}
                     tickMargin={8}
+                    allowDecimals={false}
                   />
                   <Tooltip 
                     contentStyle={{
                       backgroundColor: 'hsl(var(--popover))',
                       border: '1px solid hsl(var(--border))',
-                      borderRadius: '12px',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                      fontSize: '13px',
                     }}
-                    labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
+                    labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600, marginBottom: '4px' }}
                   />
                   <Area 
                     type="monotone" 
@@ -428,8 +466,8 @@ export const AdminAnalytics = () => {
               </ResponsiveContainer>
             </div>
           )}
-          <div className="text-center text-xs sm:text-sm text-muted-foreground mt-3 sm:mt-4">
-            {metricLabels[xMetric]} over time ({granularity})
+          <div className="text-center text-sm text-muted-foreground mt-4 font-medium">
+            {metricLabels[xMetric]} • {granularity} • Last {timeFrame === '1y' ? 'year' : timeFrame}
           </div>
         </CardContent>
       </Card>

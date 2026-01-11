@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { 
   Bot, Send, RefreshCw, Sparkles, TrendingUp, 
-  AlertTriangle, Lightbulb, BarChart3
+  AlertTriangle, Lightbulb, BarChart3, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,29 +28,16 @@ interface PlatformStats {
   recentActivity: { action: string; count: number }[];
 }
 
-const SYSTEM_PROMPT = `You are AccountancyForge, an elite forensic accountant and business strategist with 20+ years optimizing e-commerce and SaaS platforms. You have FULL, UNRESTRICTED ACCESS to this website's entire ecosystem.
-
-Your mission: Perform a DEEP, REAL-TIME AUDIT of the platform's health based on the data provided. Analyze user engagement, growth metrics, and operational efficiency.
-
-Follow this chain-of-thought process:
-
-1. **Data Harvest**: Summarize key metrics from the provided data:
-   - User metrics: Total users, active users, growth rate
-   - Engagement: Sessions, books read, summaries generated
-   - Trends: User acquisition, retention patterns
-
-2. **Health Diagnosis**: Score overall health 1-10 (10=optimal). Categorize:
-   - **Green (All Good)**: Stable growth, efficient ops
-   - **Yellow (Watch)**: Minor issues
-   - **Red (Critical)**: Problems requiring attention
-
-3. **Risk Radar**: Identify potential issues (low engagement, declining signups, etc.)
-
-4. **Evolution Roadmap**: Provide 3-5 PRIORITIZED ACTIONS to improve the platform
-
-5. **Quick Wins**: 2-3 immediate tweaks for fast improvement
-
-Output in markdown format - concise, actionable, with clear sections using emojis for visual clarity.`;
+// Clean markdown symbols from text
+const cleanMarkdown = (text: string): string => {
+  return text
+    .replace(/\*\*/g, '')  // Remove bold
+    .replace(/\*/g, '')    // Remove italic
+    .replace(/#{1,6}\s/g, '') // Remove headers
+    .replace(/`/g, '')     // Remove code ticks
+    .replace(/\n{3,}/g, '\n\n') // Reduce multiple newlines
+    .trim();
+};
 
 export const AdminAIChat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -68,33 +55,42 @@ export const AdminAIChat = () => {
       const weekAgo = new Date(today);
       weekAgo.setDate(weekAgo.getDate() - 7);
 
+      // Get all profiles for accurate user count
+      const { data: profiles } = await supabase.from('profiles').select('user_id, created_at');
+      const totalUsers = profiles?.length || 0;
+      const existingUserIds = new Set(profiles?.map(p => p.user_id) || []);
+
+      // Get active sessions for existing users only
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: activeSessions } = await supabase
+        .from('user_sessions')
+        .select('user_id')
+        .eq('is_active', true)
+        .gte('last_seen_at', fiveMinutesAgo);
+      
+      const activeUsers = activeSessions?.filter(s => existingUserIds.has(s.user_id)).length || 0;
+
       const [
-        { count: totalUsers },
-        { count: activeUsers },
         { count: totalBooks },
         { count: totalSessions },
         { count: totalSummaries },
-        { data: newUsersToday },
-        { data: newUsersThisWeek },
-        { data: allSessions },
         { data: books },
         { data: readingSessions },
         { data: recentActivity }
       ] = await Promise.all([
-        supabase.from('profiles').select('*', { count: 'exact', head: true }),
-        supabase.from('user_sessions').select('*', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('books').select('*', { count: 'exact', head: true }),
         supabase.from('user_sessions').select('*', { count: 'exact', head: true }),
         supabase.from('summaries').select('*', { count: 'exact', head: true }),
-        supabase.from('profiles').select('id').gte('created_at', today.toISOString()),
-        supabase.from('profiles').select('id').gte('created_at', weekAgo.toISOString()),
-        supabase.from('user_sessions').select('user_id'),
         supabase.from('books').select('id, title'),
         supabase.from('reading_sessions').select('book_id'),
         supabase.from('user_activity').select('action_type').order('created_at', { ascending: false }).limit(100)
       ]);
 
-      // Calculate most read books
+      // New users calculations
+      const newUsersToday = profiles?.filter(p => new Date(p.created_at) >= today).length || 0;
+      const newUsersThisWeek = profiles?.filter(p => new Date(p.created_at) >= weekAgo).length || 0;
+
+      // Most read books
       const bookCounts = new Map<string, number>();
       readingSessions?.forEach(session => {
         bookCounts.set(session.book_id, (bookCounts.get(session.book_id) || 0) + 1);
@@ -108,7 +104,7 @@ export const AdminAIChat = () => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 5) || [];
 
-      // Calculate activity counts
+      // Activity counts
       const activityCounts = new Map<string, number>();
       recentActivity?.forEach(a => {
         activityCounts.set(a.action_type, (activityCounts.get(a.action_type) || 0) + 1);
@@ -118,24 +114,18 @@ export const AdminAIChat = () => {
         .map(([action, count]) => ({ action, count }))
         .sort((a, b) => b.count - a.count);
 
-      // Calculate avg sessions per user
-      const userSessionCounts = new Map<string, number>();
-      allSessions?.forEach(s => {
-        userSessionCounts.set(s.user_id, (userSessionCounts.get(s.user_id) || 0) + 1);
-      });
-      const avgSessions = userSessionCounts.size > 0 
-        ? Array.from(userSessionCounts.values()).reduce((a, b) => a + b, 0) / userSessionCounts.size 
-        : 0;
+      // Avg sessions per user
+      const avgSessions = totalUsers > 0 ? Math.round(((totalSessions || 0) / totalUsers) * 10) / 10 : 0;
 
       setStats({
-        totalUsers: totalUsers || 0,
-        activeUsers: activeUsers || 0,
+        totalUsers,
+        activeUsers,
         totalBooks: totalBooks || 0,
         totalSessions: totalSessions || 0,
         totalSummaries: totalSummaries || 0,
-        newUsersToday: newUsersToday?.length || 0,
-        newUsersThisWeek: newUsersThisWeek?.length || 0,
-        avgSessionsPerUser: Math.round(avgSessions * 10) / 10,
+        newUsersToday,
+        newUsersThisWeek,
+        avgSessionsPerUser: avgSessions,
         mostReadBooks,
         recentActivity: recentActivitySummary
       });
@@ -166,11 +156,8 @@ export const AdminAIChat = () => {
     setLoading(true);
 
     try {
-      // Get auth token
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Not authenticated');
-      }
+      if (!session) throw new Error('Not authenticated');
 
       const response = await fetch(`https://rldrcongresqaqbebceb.supabase.co/functions/v1/admin-ai-chat`, {
         method: 'POST',
@@ -187,11 +174,8 @@ export const AdminAIChat = () => {
         })
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to get AI response');
-      }
+      if (!response.ok) throw new Error('Failed to get AI response');
 
-      // Handle streaming response
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let assistantContent = '';
@@ -219,7 +203,7 @@ export const AdminAIChat = () => {
                   const newMessages = [...prev];
                   newMessages[newMessages.length - 1] = { 
                     role: 'assistant', 
-                    content: assistantContent 
+                    content: cleanMarkdown(assistantContent)
                   };
                   return newMessages;
                 });
@@ -234,7 +218,7 @@ export const AdminAIChat = () => {
       console.error('Error sending message:', error);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: 'Sorry, I encountered an error analyzing the data. Please try again.' 
+        content: 'Error analyzing data. Please try again.' 
       }]);
     } finally {
       setLoading(false);
@@ -242,54 +226,54 @@ export const AdminAIChat = () => {
   };
 
   const runFullAudit = () => {
-    sendMessage('Run a complete platform audit. Analyze all metrics, identify issues, and provide actionable recommendations for growth and improvement.');
+    sendMessage('Analyze the platform health. Give a brief score out of 10, top 3 strengths, top 3 concerns, and 3 priority actions. Be concise and direct.');
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-      {/* Stats Overview */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Stats Panel */}
       <Card className="glass-morphism border-primary/20">
-        <CardHeader className="pb-2 sm:pb-4">
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
             <div className="p-1.5 rounded-lg bg-primary/10">
               <BarChart3 className="w-4 h-4 text-primary" />
             </div>
             Live Stats
           </CardTitle>
-          <CardDescription className="text-xs sm:text-sm">Real-time data for AI analysis</CardDescription>
+          <CardDescription className="text-xs">Real-time data for AI</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3 sm:space-y-4">
+        <CardContent className="space-y-4">
           {loadingStats ? (
-            <div className="flex items-center justify-center py-6 sm:py-8">
-              <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6 animate-spin text-primary" />
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="w-6 h-6 animate-spin text-primary" />
             </div>
           ) : stats ? (
             <>
-              <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                <div className="p-2 sm:p-3 rounded-xl bg-primary/10 border border-primary/20">
-                  <div className="text-lg sm:text-2xl font-bold">{stats.totalUsers}</div>
-                  <div className="text-[10px] sm:text-xs text-muted-foreground">Total Users</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
+                  <div className="text-2xl font-bold">{stats.totalUsers}</div>
+                  <div className="text-xs text-muted-foreground">Total Users</div>
                 </div>
-                <div className="p-2 sm:p-3 rounded-xl bg-green-500/10 border border-green-500/20">
-                  <div className="text-lg sm:text-2xl font-bold text-green-600">{stats.activeUsers}</div>
-                  <div className="text-[10px] sm:text-xs text-muted-foreground">Active Now</div>
+                <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20">
+                  <div className="text-2xl font-bold text-green-600">{stats.activeUsers}</div>
+                  <div className="text-xs text-muted-foreground">Active Now</div>
                 </div>
-                <div className="p-2 sm:p-3 rounded-xl bg-accent/10 border border-accent/20">
-                  <div className="text-lg sm:text-2xl font-bold">{stats.newUsersThisWeek}</div>
-                  <div className="text-[10px] sm:text-xs text-muted-foreground">New This Week</div>
+                <div className="p-3 rounded-xl bg-accent/10 border border-accent/20">
+                  <div className="text-2xl font-bold">{stats.newUsersThisWeek}</div>
+                  <div className="text-xs text-muted-foreground">New This Week</div>
                 </div>
-                <div className="p-2 sm:p-3 rounded-xl bg-secondary/10 border border-secondary/20">
-                  <div className="text-lg sm:text-2xl font-bold">{stats.totalSummaries}</div>
-                  <div className="text-[10px] sm:text-xs text-muted-foreground">Summaries</div>
+                <div className="p-3 rounded-xl bg-secondary/10 border border-secondary/20">
+                  <div className="text-2xl font-bold">{stats.totalSummaries}</div>
+                  <div className="text-xs text-muted-foreground">Summaries</div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs sm:text-sm font-medium">Top Books</div>
+                <div className="text-sm font-medium">Top Books</div>
                 {stats.mostReadBooks.slice(0, 3).map((book, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs sm:text-sm p-2 rounded-lg bg-muted/50">
-                    <span className="truncate flex-1 mr-2">{book.title}</span>
-                    <Badge variant="outline" className="text-[10px] sm:text-xs shrink-0">{book.count}</Badge>
+                  <div key={i} className="flex items-center justify-between text-sm p-2 rounded-lg bg-muted/50">
+                    <span className="truncate flex-1 mr-2">{book.title || 'Untitled'}</span>
+                    <Badge variant="outline" className="text-xs shrink-0">{book.count}</Badge>
                   </div>
                 ))}
               </div>
@@ -297,11 +281,11 @@ export const AdminAIChat = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="w-full h-9"
+                className="w-full"
                 onClick={loadPlatformStats}
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh Stats
+                Refresh
               </Button>
             </>
           ) : (
@@ -314,22 +298,23 @@ export const AdminAIChat = () => {
 
       {/* AI Chat */}
       <Card className="glass-morphism border-primary/20 lg:col-span-2">
-        <CardHeader className="pb-2 sm:pb-4">
+        <CardHeader className="pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <div className="p-1.5 rounded-lg bg-gradient-to-br from-primary to-accent">
                   <Bot className="w-4 h-4 text-primary-foreground" />
                 </div>
-                AccountancyForge AI
+                Platform Analyst
               </CardTitle>
-              <CardDescription className="text-xs sm:text-sm mt-1">
-                Forensic accountant & strategist
+              <CardDescription className="text-xs mt-1">
+                AI-powered insights
               </CardDescription>
             </div>
             <Button 
               onClick={runFullAudit}
-              className="bg-gradient-to-r from-primary to-accent hover:opacity-90 h-9 text-xs sm:text-sm"
+              size="sm"
+              className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
               disabled={loading}
             >
               <Sparkles className="w-4 h-4 mr-1.5" />
@@ -337,42 +322,42 @@ export const AdminAIChat = () => {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3 sm:space-y-4 pt-0">
-          <ScrollArea className="h-[300px] sm:h-[350px] lg:h-[400px] rounded-xl border bg-muted/30 p-3 sm:p-4" ref={scrollRef}>
+        <CardContent className="space-y-4 pt-0">
+          <ScrollArea className="h-[380px] rounded-xl border bg-muted/20 p-4" ref={scrollRef}>
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center space-y-3 sm:space-y-4">
-                <div className="p-3 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20">
-                  <Bot className="w-8 h-8 sm:w-12 sm:h-12 text-primary" />
+              <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20">
+                  <Bot className="w-10 h-10 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm sm:text-base">AI Ready</h3>
-                  <p className="text-xs sm:text-sm text-muted-foreground">
-                    Click "Run Audit" or ask anything
+                  <h3 className="font-semibold">Ready to Analyze</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Click "Run Audit" or ask a question
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5 sm:gap-2 justify-center">
+                <div className="flex flex-wrap gap-2 justify-center">
                   <Badge 
                     variant="outline" 
-                    className="cursor-pointer hover:bg-primary/10 text-[10px] sm:text-xs transition-colors"
+                    className="cursor-pointer hover:bg-primary/10 text-xs py-1.5 px-3"
                     onClick={() => sendMessage('What are the key growth metrics?')}
                   >
-                    <TrendingUp className="w-3 h-3 mr-1" />
+                    <TrendingUp className="w-3 h-3 mr-1.5" />
                     Growth
                   </Badge>
                   <Badge 
                     variant="outline" 
-                    className="cursor-pointer hover:bg-primary/10 text-[10px] sm:text-xs transition-colors"
-                    onClick={() => sendMessage('What risks should I be aware of?')}
+                    className="cursor-pointer hover:bg-primary/10 text-xs py-1.5 px-3"
+                    onClick={() => sendMessage('What risks should I watch?')}
                   >
-                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    <AlertTriangle className="w-3 h-3 mr-1.5" />
                     Risks
                   </Badge>
                   <Badge 
                     variant="outline" 
-                    className="cursor-pointer hover:bg-primary/10 text-[10px] sm:text-xs transition-colors"
-                    onClick={() => sendMessage('Give me quick wins for improvement')}
+                    className="cursor-pointer hover:bg-primary/10 text-xs py-1.5 px-3"
+                    onClick={() => sendMessage('Give me 3 quick wins')}
                   >
-                    <Lightbulb className="w-3 h-3 mr-1" />
+                    <Lightbulb className="w-3 h-3 mr-1.5" />
                     Quick Wins
                   </Badge>
                 </div>
@@ -385,13 +370,13 @@ export const AdminAIChat = () => {
                     className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[85%] rounded-lg p-3 ${
+                      className={`max-w-[85%] rounded-xl p-3 ${
                         message.role === 'user'
                           ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted'
+                          : 'bg-muted/80'
                       }`}
                     >
-                      <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
+                      <div className="text-sm whitespace-pre-wrap leading-relaxed">
                         {message.content || (loading && index === messages.length - 1 ? (
                           <span className="flex items-center gap-2">
                             <RefreshCw className="w-4 h-4 animate-spin" />
@@ -408,7 +393,7 @@ export const AdminAIChat = () => {
 
           <div className="flex gap-2">
             <Textarea
-              placeholder="Ask about user engagement, growth, risks, or strategies..."
+              placeholder="Ask about users, engagement, risks..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -417,13 +402,14 @@ export const AdminAIChat = () => {
                   sendMessage();
                 }
               }}
-              className="resize-none"
+              className="resize-none text-sm"
               rows={2}
             />
             <Button 
               onClick={() => sendMessage()}
               disabled={loading || !input.trim()}
-              className="px-6"
+              size="icon"
+              className="h-auto px-4"
             >
               {loading ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />

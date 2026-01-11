@@ -67,59 +67,44 @@ export const StreakDisplay = ({ streak, lastReadDate, showUrgency = true }: Stre
 
   return (
     <div className="relative flex-shrink-0">
-      {/* Main Streak Display - Compact for mobile */}
+      {/* Main Streak Display - Compact and non-overlapping */}
       <div 
         className={cn(
-          "relative flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-all duration-500",
+          "relative flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-md sm:rounded-lg transition-all duration-500",
           "bg-gradient-to-r",
           color,
-          isAnimating && "scale-110 shadow-lg",
+          isAnimating && "scale-105",
           isAtRisk && showUrgency && "animate-pulse"
         )}
       >
-        {/* Single Flame Icon on mobile, multiple on desktop */}
-        <div className="flex -space-x-1">
-          <Flame 
-            className={cn(
-              "w-4 h-4 sm:w-5 sm:h-5 text-white drop-shadow-lg",
-              isAnimating && "animate-bounce",
-            )}
-          />
-          {/* Additional flames only on larger screens */}
-          {flames > 1 && Array.from({ length: Math.min(flames - 1, 2) }).map((_, i) => (
-            <Flame 
-              key={i}
-              className={cn(
-                "hidden sm:block w-5 h-5 text-white drop-shadow-lg",
-                isAnimating && "animate-bounce",
-              )}
-              style={{ animationDelay: `${(i + 1) * 100}ms` }}
-            />
-          ))}
-        </div>
+        {/* Flame Icon */}
+        <Flame 
+          className={cn(
+            "w-3.5 h-3.5 sm:w-4 sm:h-4 text-white drop-shadow-md",
+            isAnimating && "animate-bounce",
+          )}
+        />
         
-        <div className="flex flex-col leading-tight">
-          <span className="text-sm sm:text-lg font-bold text-white drop-shadow-md">{streak}</span>
-          <span className="text-[8px] sm:text-[10px] uppercase tracking-wider text-white/80 hidden sm:block">day streak</span>
-        </div>
+        {/* Streak Number */}
+        <span className="text-xs sm:text-sm font-bold text-white drop-shadow-sm leading-none">
+          {streak}
+        </span>
 
-        {/* Sparkle effect for high streaks */}
+        {/* Sparkle for high streaks - desktop only */}
         {streak >= 7 && (
-          <div className="absolute -top-1 -right-1">
-            <Zap className={cn(
-              "w-3 h-3 sm:w-4 sm:h-4 text-yellow-300",
-              isAnimating && "animate-ping"
-            )} />
-          </div>
+          <Zap className={cn(
+            "hidden sm:block w-3 h-3 text-yellow-300",
+            isAnimating && "animate-ping"
+          )} />
         )}
       </div>
 
-      {/* Urgency Warning - Hidden on mobile to prevent overflow, shown on larger screens */}
+      {/* Urgency Warning - Only on larger screens, positioned below */}
       {isAtRisk && showUrgency && streak > 0 && (
-        <div className="hidden sm:block absolute -bottom-14 left-1/2 -translate-x-1/2 w-max animate-fade-in z-50">
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-destructive/90 text-destructive-foreground rounded-lg text-xs font-medium shadow-lg">
-            <AlertTriangle className="w-3.5 h-3.5 animate-pulse" />
-            <span>{hoursLeft}h left to save streak!</span>
+        <div className="hidden lg:block absolute top-full left-1/2 -translate-x-1/2 mt-2 w-max z-50">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-destructive/90 text-destructive-foreground rounded-md text-[10px] font-medium shadow-lg whitespace-nowrap">
+            <AlertTriangle className="w-3 h-3" />
+            <span>{hoursLeft}h left!</span>
           </div>
         </div>
       )}
