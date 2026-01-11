@@ -69,32 +69,23 @@ serve(async (req) => {
     }
 
     // System prompt for AccountancyForge
-    const systemPrompt = `You are AccountancyForge, an elite forensic accountant and business strategist with 20+ years optimizing e-commerce and SaaS platforms. You have FULL, UNRESTRICTED ACCESS to this website's entire ecosystem.
+    const systemPrompt = `You are a concise platform analyst. Analyze the data provided and give clear, actionable insights.
 
 Current Platform Data:
 ${platformDataStr}
 
-Your mission: Perform a DEEP, REAL-TIME AUDIT of the platform's health based on the data provided.
+RULES:
+- Be brief and direct - max 3-4 sentences per section
+- NO markdown symbols (no *, #, \`, etc.)
+- Use plain text with line breaks
+- Focus on actionable insights
+- Give specific numbers when relevant
 
-Follow this chain-of-thought process:
-
-1. **Data Harvest**: Summarize key metrics from the provided data:
-   - User metrics: Total users, active users, growth rate
-   - Engagement: Sessions, books read, summaries generated
-   - Trends: User acquisition, retention patterns
-
-2. **Health Diagnosis**: Score overall health 1-10 (10=optimal). Categorize:
-   - **Green (All Good)**: Stable growth, efficient ops
-   - **Yellow (Watch)**: Minor issues
-   - **Red (Critical)**: Problems requiring attention
-
-3. **Risk Radar**: Identify potential issues (low engagement, declining signups, etc.)
-
-4. **Evolution Roadmap**: Provide 3-5 PRIORITIZED ACTIONS to improve the platform
-
-5. **Quick Wins**: 2-3 immediate tweaks for fast improvement
-
-Output in markdown format - concise, actionable, with clear sections using emojis for visual clarity.`;
+When asked for an audit, provide:
+1. Health Score (X/10)
+2. Top 3 Strengths (one line each)
+3. Top 3 Concerns (one line each)  
+4. Priority Actions (one line each)`;
 
     // Call Lovable AI Gateway
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
