@@ -44,19 +44,20 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
       .maybeSingle();
 
     if (preferences) {
-      const today = new Date().toISOString().split('T')[0];
-      const lastReset = preferences.last_credit_reset;
+      const today = new Date();
+      const lastReset = new Date(preferences.last_credit_reset);
+      const daysSinceReset = Math.floor((today.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24));
 
-      // Reset credits if it's a new day
-      if (lastReset !== today) {
+      // Reset credits if it's been 7 days (weekly reset)
+      if (daysSinceReset >= 7) {
         await supabase
           .from('user_preferences')
           .update({
-            daily_credits: 2,
-            last_credit_reset: today
+            daily_credits: 3,
+            last_credit_reset: today.toISOString().split('T')[0]
           })
           .eq('user_id', user.id);
-        setCredits(2);
+        setCredits(3);
       } else {
         setCredits(preferences.daily_credits);
       }
@@ -163,13 +164,14 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
 
       updateProgress("Generating AI summary...");
 
-      // Step 4: Generate summary
+      // Step 4: Generate summary with PDF text for language/theme detection
       const { data: summaryData, error: summaryError } = await supabase.functions.invoke(
         'generate-summary',
         {
           body: {
             bookTitle: bookName,
-            pdfUrl: searchData.pdfUrls[0]
+            pdfUrl: searchData.pdfUrls[0],
+            pdfText: pdfData.extractedText // Pass extracted text for language detection
           }
         }
       );
