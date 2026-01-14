@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle, Download, ExternalLink, FileText, Headphones, Volume2, Search, Loader2 } from "lucide-react";
+import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle, Download, ExternalLink, FileText, Headphones, Volume2, Search, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/AuthProvider";
 import BookChat from "@/components/BookChat";
+import PdfViewerDialog from "@/components/PdfViewerDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +39,7 @@ const ReadBook = () => {
   const hasCompletedRef = useRef(false);
   const [isSearchingPdf, setIsSearchingPdf] = useState(false);
   const [foundPdfUrls, setFoundPdfUrls] = useState<string[]>([]);
+  const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   
   // Ref to track if we're in iOS WebView
   const isIOSWebView = useRef(
@@ -1028,7 +1030,7 @@ const ReadBook = () => {
               {/* Clickable Title with Shine Effect */}
               {book.pdf_url ? (
                 <button
-                  onClick={() => window.open(book.pdf_url, '_blank')}
+                  onClick={() => setIsPdfViewerOpen(true)}
                   className="text-left group cursor-pointer"
                 >
                   <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold break-words leading-tight relative">
@@ -1038,8 +1040,8 @@ const ReadBook = () => {
                     <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300 pointer-events-none" />
                   </h1>
                   <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 group-hover:text-primary/70 transition-colors">
-                    <ExternalLink className="w-3 h-3" />
-                    <span>Click to view PDF</span>
+                    <Eye className="w-3 h-3" />
+                    <span>Click to preview PDF</span>
                   </p>
                 </button>
               ) : (
@@ -1060,16 +1062,28 @@ const ReadBook = () => {
               )}
             </div>
 
-            {/* Download Button */}
+            {/* PDF Actions */}
             {book.pdf_url && (
-              <Button
-                onClick={handleDownloadPDF}
-                size="icon"
-                className="shrink-0 h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-gradient-to-br from-secondary via-primary to-accent hover:opacity-90 shadow-lg hover:shadow-xl transition-all hover:scale-105"
-                aria-label="Download PDF"
-              >
-                <Download className="w-4 h-4 sm:w-5 sm:h-5" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setIsPdfViewerOpen(true)}
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 h-9 sm:h-10 px-3 rounded-full border-primary/30 hover:bg-primary/10 hover:border-primary/50 transition-all"
+                  aria-label="Preview PDF"
+                >
+                  <Eye className="w-4 h-4 mr-1.5" />
+                  <span className="hidden sm:inline">Preview</span>
+                </Button>
+                <Button
+                  onClick={handleDownloadPDF}
+                  size="icon"
+                  className="shrink-0 h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-secondary via-primary to-accent hover:opacity-90 shadow-lg hover:shadow-xl transition-all hover:scale-105"
+                  aria-label="Download PDF"
+                >
+                  <Download className="w-4 h-4" />
+                </Button>
+              </div>
             )}
           </div>
 
@@ -1266,6 +1280,17 @@ const ReadBook = () => {
           bookTitle={book.title}
           bookAuthor={book.author}
           summary={summary}
+        />
+      )}
+
+      {/* PDF Viewer Dialog */}
+      {book.pdf_url && (
+        <PdfViewerDialog
+          isOpen={isPdfViewerOpen}
+          onClose={() => setIsPdfViewerOpen(false)}
+          pdfUrl={book.pdf_url}
+          title={book.title}
+          author={book.author}
         />
       )}
     </div>
