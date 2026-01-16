@@ -188,12 +188,35 @@ export const AdminCommands = () => {
         return;
       }
 
-      const { error } = await supabase
+      // Check if user_preferences exists
+      const { data: existingPrefs } = await supabase
         .from('user_preferences')
-        .update({ daily_credits: parseInt(creditsAmount) })
-        .eq('user_id', profile.user_id);
+        .select('id')
+        .eq('user_id', profile.user_id)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (existingPrefs) {
+        // Update existing preferences
+        const { error } = await supabase
+          .from('user_preferences')
+          .update({ daily_credits: parseInt(creditsAmount) })
+          .eq('user_id', profile.user_id);
+
+        if (error) throw error;
+      } else {
+        // Create new preferences with credits
+        const { error } = await supabase
+          .from('user_preferences')
+          .insert({
+            user_id: profile.user_id,
+            daily_credits: parseInt(creditsAmount),
+            completed_onboarding: false,
+            themes: [],
+            last_credit_reset: new Date().toISOString().split('T')[0]
+          });
+
+        if (error) throw error;
+      }
 
       toast({
         title: 'Credits updated',

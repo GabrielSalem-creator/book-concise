@@ -53,6 +53,17 @@ const ReadBook = () => {
     if (ttsInitialized) return;
     
     try {
+      // Check if speech synthesis is available
+      if (!('speechSynthesis' in window)) {
+        console.warn('Speech synthesis not supported in this browser');
+        toast({
+          title: "TTS Not Supported",
+          description: "Your browser doesn't support text-to-speech. Try Chrome or Safari.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // For iOS WebView, we need to trigger speech synthesis with user gesture
       const silentUtterance = new SpeechSynthesisUtterance(' ');
       silentUtterance.volume = 0.01; // Very quiet but not silent (iOS quirk)
@@ -63,18 +74,35 @@ const ReadBook = () => {
         window.speechSynthesis.cancel();
       };
       
+      silentUtterance.onerror = () => {
+        // Silently ignore initialization errors
+        console.warn('TTS silent init failed, continuing anyway');
+      };
+      
       window.speechSynthesis.speak(silentUtterance);
       
-      // Pre-load voices with a slight delay for iOS
-      setTimeout(() => {
-        window.speechSynthesis.getVoices();
-      }, 100);
+      // Pre-load voices with multiple attempts for reliability
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          console.log(`TTS initialized with ${voices.length} voices available`);
+        }
+      };
+      
+      loadVoices();
+      setTimeout(loadVoices, 100);
+      setTimeout(loadVoices, 500);
+      
+      // Also listen for voices changed event
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+      }
       
       setTtsInitialized(true);
     } catch (e) {
       console.warn('TTS initialization failed:', e);
     }
-  }, [ttsInitialized]);
+  }, [ttsInitialized, toast]);
 
   // Cleanup: Stop audio when leaving the page
   useEffect(() => {
@@ -585,6 +613,16 @@ const ReadBook = () => {
   };
 
   const handlePlay = async () => {
+    // Check if speech synthesis is available
+    if (!('speechSynthesis' in window)) {
+      toast({
+        title: "Not Supported",
+        description: "Text-to-speech is not supported in your browser. Try Chrome or Safari.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!summary) {
       toast({
         title: "No content",
@@ -597,9 +635,16 @@ const ReadBook = () => {
     await createOrUpdateSession();
 
     if (isPaused && utterance) {
-      window.speechSynthesis.resume();
-      setIsPaused(false);
-      setIsReading(true);
+      try {
+        window.speechSynthesis.resume();
+        setIsPaused(false);
+        setIsReading(true);
+      } catch (e) {
+        console.error('Resume failed:', e);
+        // If resume fails, start from scratch
+        window.speechSynthesis.cancel();
+        setIsPaused(false);
+      }
       return;
     }
 
@@ -608,90 +653,131 @@ const ReadBook = () => {
 
     // Helper function to start speech with voice
     const startSpeech = (voice: SpeechSynthesisVoice | null) => {
-      // If we have a saved position, start from there
-      const startPos = savedCharPosition > 0 ? savedCharPosition : 0;
-      const textToRead = startPos > 0 ? summary.substring(startPos) : summary;
-      
-      const newUtterance = new SpeechSynthesisUtterance(textToRead);
-      newUtterance.rate = 0.9;
-      newUtterance.pitch = 1;
-      newUtterance.volume = 1;
-      
-      if (voice) {
-        newUtterance.voice = voice;
-      }
-
-      let lastProgress = startPos > 0 ? (startPos / summary.length) * 100 : 0;
-      
-      newUtterance.onboundary = (event) => {
-        if (event.charIndex >= 0) {
-          // Calculate actual character position in the full summary
-          const actualCharPos = startPos + event.charIndex;
-          const currentProgress = (actualCharPos / summary.length) * 100;
-          setProgress(currentProgress);
-          setSavedCharPosition(actualCharPos);
-          
-          if (currentProgress - lastProgress >= 10 && readingSessionId) {
-            lastProgress = currentProgress;
-            supabase
-              .from('reading_sessions')
-              .update({ 
-                progress_percentage: currentProgress,
-                last_position: actualCharPos.toString(),
-                last_read_at: new Date().toISOString()
-              })
-              .eq('id', readingSessionId)
-              .then();
-          }
-        }
-      };
-
-      newUtterance.onend = async () => {
-        setIsReading(false);
-        setIsPaused(false);
-        setProgress(100);
-        setSavedCharPosition(0);
-
-        // Handle book completion and redirect
-        await handleBookCompletion();
-      };
-
-      newUtterance.onerror = (event) => {
-        // Only show error for actual failures, not interruptions
-        if (event.error !== 'interrupted' && event.error !== 'canceled') {
-          setIsReading(false);
-          setIsPaused(false);
+      try {
+        // If we have a saved position, start from there
+        const startPos = savedCharPosition > 0 ? savedCharPosition : 0;
+        const textToRead = startPos > 0 ? summary.substring(startPos) : summary;
+        
+        if (!textToRead.trim()) {
           toast({
-            title: "Audio Error",
-            description: "Could not play audio. Try selecting a different voice.",
+            title: "No content",
+            description: "Summary is empty",
             variant: "destructive",
           });
+          return;
         }
-      };
+        
+        const newUtterance = new SpeechSynthesisUtterance(textToRead);
+        newUtterance.rate = 0.9;
+        newUtterance.pitch = 1;
+        newUtterance.volume = 1;
+        
+        if (voice) {
+          newUtterance.voice = voice;
+          newUtterance.lang = voice.lang;
+        } else {
+          // Fallback to default language
+          newUtterance.lang = 'en-US';
+        }
 
-      setUtterance(newUtterance);
-      window.speechSynthesis.speak(newUtterance);
-      setIsReading(true);
-      setIsPaused(false);
+        let lastProgress = startPos > 0 ? (startPos / summary.length) * 100 : 0;
+        
+        newUtterance.onboundary = (event) => {
+          if (event.charIndex >= 0) {
+            // Calculate actual character position in the full summary
+            const actualCharPos = startPos + event.charIndex;
+            const currentProgress = (actualCharPos / summary.length) * 100;
+            setProgress(currentProgress);
+            setSavedCharPosition(actualCharPos);
+            
+            if (currentProgress - lastProgress >= 10 && readingSessionId) {
+              lastProgress = currentProgress;
+              supabase
+                .from('reading_sessions')
+                .update({ 
+                  progress_percentage: currentProgress,
+                  last_position: actualCharPos.toString(),
+                  last_read_at: new Date().toISOString()
+                })
+                .eq('id', readingSessionId)
+                .then();
+            }
+          }
+        };
+
+        newUtterance.onend = async () => {
+          setIsReading(false);
+          setIsPaused(false);
+          setProgress(100);
+          setSavedCharPosition(0);
+
+          // Handle book completion and redirect
+          await handleBookCompletion();
+        };
+
+        newUtterance.onerror = (event) => {
+          console.error('TTS Error:', event.error);
+          // Only show error for actual failures, not interruptions
+          if (event.error !== 'interrupted' && event.error !== 'canceled') {
+            setIsReading(false);
+            setIsPaused(false);
+            
+            let errorMessage = "Could not play audio.";
+            if (event.error === 'network') {
+              errorMessage = "Network error. Check your connection.";
+            } else if (event.error === 'synthesis-unavailable') {
+              errorMessage = "Speech synthesis unavailable. Try refreshing.";
+            } else if (event.error === 'not-allowed') {
+              errorMessage = "Audio blocked. Click play again.";
+            }
+            
+            toast({
+              title: "Audio Error",
+              description: errorMessage,
+              variant: "destructive",
+            });
+          }
+        };
+
+        setUtterance(newUtterance);
+        window.speechSynthesis.speak(newUtterance);
+        setIsReading(true);
+        setIsPaused(false);
+        
+        console.log('TTS started with voice:', voice?.name || 'default');
+      } catch (e) {
+        console.error('TTS start failed:', e);
+        toast({
+          title: "Audio Error",
+          description: "Failed to start audio playback. Please refresh and try again.",
+          variant: "destructive",
+        });
+      }
     };
 
-    // Load voices and start speech
+    // Load voices and start speech with multiple fallback strategies
     let voices = window.speechSynthesis.getVoices();
+    
     if (voices.length === 0) {
-      // Wait for voices to load
-      window.speechSynthesis.onvoiceschanged = () => {
+      // Strategy 1: Wait for voiceschanged event
+      const voicesChangedHandler = () => {
         voices = window.speechSynthesis.getVoices();
-        const voice = getVoice();
-        startSpeech(voice);
-      };
-      // Also set a timeout in case onvoiceschanged doesn't fire
-      setTimeout(() => {
-        if (!isReading) {
-          voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          window.speechSynthesis.onvoiceschanged = null;
           const voice = getVoice();
           startSpeech(voice);
         }
-      }, 100);
+      };
+      window.speechSynthesis.onvoiceschanged = voicesChangedHandler;
+      
+      // Strategy 2: Timeout fallback - try without voice
+      setTimeout(() => {
+        if (!isReading) {
+          voices = window.speechSynthesis.getVoices();
+          const voice = voices.length > 0 ? getVoice() : null;
+          startSpeech(voice);
+        }
+      }, 200);
     } else {
       const voice = getVoice();
       startSpeech(voice);
