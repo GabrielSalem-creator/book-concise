@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Users, Download, RefreshCw, Search, Circle, 
-  Clock, Calendar, Mail, User, Trash2
+  Clock, Calendar, Mail, User, Trash2, Pencil, Check, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,8 @@ export const AdminUsersTable = () => {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingCredits, setEditingCredits] = useState<string | null>(null);
+  const [creditValue, setCreditValue] = useState<string>('');
   const { toast } = useToast();
 
   const loadUsers = async () => {
@@ -177,6 +179,80 @@ export const AdminUsersTable = () => {
       toast({
         title: 'Error',
         description: 'Failed to delete user. Check console for details.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const startEditingCredits = (user: UserData) => {
+    setEditingCredits(user.user_id);
+    setCreditValue(user.credits.toString());
+  };
+
+  const cancelEditingCredits = () => {
+    setEditingCredits(null);
+    setCreditValue('');
+  };
+
+  const saveCredits = async (user: UserData) => {
+    const newCredits = parseInt(creditValue, 10);
+    if (isNaN(newCredits) || newCredits < 0) {
+      toast({
+        title: 'Invalid value',
+        description: 'Please enter a valid number of credits (0 or more)',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Check if user_preferences exists for this user
+      const { data: existingPrefs } = await supabase
+        .from('user_preferences')
+        .select('id')
+        .eq('user_id', user.user_id)
+        .maybeSingle();
+
+      if (existingPrefs) {
+        // Update existing preferences
+        const { error } = await supabase
+          .from('user_preferences')
+          .update({ daily_credits: newCredits })
+          .eq('user_id', user.user_id);
+
+        if (error) throw error;
+      } else {
+        // Create new preferences
+        const { error } = await supabase
+          .from('user_preferences')
+          .insert({
+            user_id: user.user_id,
+            daily_credits: newCredits,
+            completed_onboarding: false,
+            themes: [],
+            last_credit_reset: new Date().toISOString().split('T')[0]
+          });
+
+        if (error) throw error;
+      }
+
+      toast({
+        title: 'Credits updated',
+        description: `${user.full_name || user.email} now has ${newCredits} credits`,
+      });
+
+      // Update local state
+      setUsers(prev => prev.map(u => 
+        u.user_id === user.user_id ? { ...u, credits: newCredits } : u
+      ));
+      
+      setEditingCredits(null);
+      setCreditValue('');
+    } catch (error) {
+      console.error('Error updating credits:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update credits. Please try again.',
         variant: 'destructive',
       });
     }
@@ -316,7 +392,50 @@ export const AdminUsersTable = () => {
                       <Badge variant="outline" className="bg-primary/10">{user.books_read}</Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="bg-accent/10">{user.credits}</Badge>
+                      {editingCredits === user.user_id ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min="0"
+                            value={creditValue}
+                            onChange={(e) => setCreditValue(e.target.value)}
+                            className="w-16 h-8 text-xs"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveCredits(user);
+                              if (e.key === 'Escape') cancelEditingCredits();
+                            }}
+                            autoFocus
+                          />
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 w-7 p-0 text-green-600 hover:text-green-700"
+                            onClick={() => saveCredits(user)}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                            onClick={cancelEditingCredits}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline" className="bg-accent/10">{user.credits}</Badge>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                            onClick={() => startEditingCredits(user)}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <AlertDialog>

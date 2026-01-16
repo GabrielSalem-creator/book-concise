@@ -176,8 +176,20 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
         }
       );
 
-      if (summaryError) throw summaryError;
+      // Handle specific error cases from the edge function
+      if (summaryError) {
+        // Check if the error response contains credit-related info
+        if (summaryError.message?.includes('credits') || summaryError.message?.includes('No credits')) {
+          throw new Error('No credits remaining');
+        }
+        throw summaryError;
+      }
+      
+      // Check the response for credit errors
       if (!summaryData.success) {
+        if (summaryData.error?.includes('credits') || summaryData.creditsRemaining === 0) {
+          throw new Error('No credits remaining');
+        }
         throw new Error(summaryData.error || 'Failed to generate summary');
       }
 
@@ -217,11 +229,24 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
       setStatus("");
       setProgressValue(0);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
+      
+      // Check if it's a credits error (from the edge function)
+      let errorMessage = "Failed to process book";
+      let errorTitle = "Error";
+      
+      if (error?.message?.includes('No credits remaining') || error?.message?.includes('credits')) {
+        errorTitle = "No Credits Remaining";
+        errorMessage = "You've used all your weekly credits. You get 3 free credits every week to generate new book summaries.";
+        setCredits(0);
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to process book",
+        title: errorTitle,
+        description: errorMessage,
         variant: "destructive",
       });
       setStatus("");
