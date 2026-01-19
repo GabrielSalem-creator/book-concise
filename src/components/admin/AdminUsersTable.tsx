@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Users, Download, RefreshCw, Search, Circle, 
-  Clock, Calendar, Mail, User, Trash2, Pencil, Check, X
+  Clock, Calendar, Mail, User, Trash2, Pencil, Check, X, Crown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,7 @@ interface UserData {
   total_sessions: number;
   books_read: number;
   credits: number;
+  is_admin: boolean;
 }
 
 export const AdminUsersTable = () => {
@@ -51,60 +52,26 @@ export const AdminUsersTable = () => {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      // Get profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*');
+      // Use the edge function to get users with emails
+      const { data, error } = await supabase.functions.invoke('get-admin-users');
+      
+      if (error) {
+        console.error('Error from edge function:', error);
+        throw error;
+      }
 
-      if (profilesError) throw profilesError;
-
-      // Get user preferences for credits
-      const { data: preferences } = await supabase
-        .from('user_preferences')
-        .select('user_id, daily_credits');
-
-      // Get active sessions
-      const { data: sessions } = await supabase
-        .from('user_sessions')
-        .select('user_id, last_seen_at, is_active')
-        .eq('is_active', true);
-
-      // Get reading sessions count per user
-      const { data: readingSessions } = await supabase
-        .from('reading_sessions')
-        .select('user_id')
-        .not('completed_at', 'is', null);
-
-      // Get total session count per user
-      const { data: allSessions } = await supabase
-        .from('user_sessions')
-        .select('user_id');
-
-      // Combine data
-      const userData: UserData[] = profiles?.map(profile => {
-        const userPrefs = preferences?.find(p => p.user_id === profile.user_id);
-        const activeSession = sessions?.find(s => s.user_id === profile.user_id);
-        const userReadingSessions = readingSessions?.filter(r => r.user_id === profile.user_id);
-        const userAllSessions = allSessions?.filter(s => s.user_id === profile.user_id);
-
-        return {
-          id: profile.id,
-          user_id: profile.user_id,
-          full_name: profile.full_name,
-          username: profile.username,
-          email: profile.username || profile.full_name || 'Unknown',
-          created_at: profile.created_at,
-          is_online: activeSession?.is_active || false,
-          last_seen: activeSession?.last_seen_at || null,
-          total_sessions: userAllSessions?.length || 0,
-          books_read: userReadingSessions?.length || 0,
-          credits: userPrefs?.daily_credits ?? 2,
-        };
-      }) || [];
-
-      setUsers(userData);
+      if (data?.success && data?.users) {
+        setUsers(data.users);
+      } else {
+        throw new Error(data?.error || 'Failed to load users');
+      }
     } catch (error) {
       console.error('Error loading users:', error);
+      toast({
+        title: 'Error loading users',
+        description: 'Failed to load user data. Make sure you have admin permissions.',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
@@ -206,35 +173,13 @@ export const AdminUsersTable = () => {
     }
 
     try {
-      // Check if user_preferences exists for this user
-      const { data: existingPrefs } = await supabase
-        .from('user_preferences')
-        .select('id')
-        .eq('user_id', user.user_id)
-        .maybeSingle();
+      // Use the edge function to update credits
+      const { data, error } = await supabase.functions.invoke('update-user-credits', {
+        body: { userId: user.user_id, credits: newCredits }
+      });
 
-      if (existingPrefs) {
-        // Update existing preferences
-        const { error } = await supabase
-          .from('user_preferences')
-          .update({ daily_credits: newCredits })
-          .eq('user_id', user.user_id);
-
-        if (error) throw error;
-      } else {
-        // Create new preferences
-        const { error } = await supabase
-          .from('user_preferences')
-          .insert({
-            user_id: user.user_id,
-            daily_credits: newCredits,
-            completed_onboarding: false,
-            themes: [],
-            last_credit_reset: new Date().toISOString().split('T')[0]
-          });
-
-        if (error) throw error;
-      }
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to update credits');
 
       toast({
         title: 'Credits updated',
@@ -265,7 +210,7 @@ export const AdminUsersTable = () => {
   );
 
   const exportToCSV = () => {
-    const headers = ['Name', 'Email', 'Created At', 'Online', 'Last Seen', 'Sessions', 'Books Read', 'Credits'];
+    const headers = ['Name', 'Email', 'Created At', 'Online', 'Last Seen', 'Sessions', 'Books Read', 'Credits', 'Admin'];
     const rows = filteredUsers.map(u => [
       u.full_name || '',
       u.email,
@@ -274,7 +219,8 @@ export const AdminUsersTable = () => {
       u.last_seen ? format(new Date(u.last_seen), 'yyyy-MM-dd HH:mm') : 'Never',
       u.total_sessions,
       u.books_read,
-      u.credits
+      u.is_admin ? '∞' : u.credits,
+      u.is_admin ? 'Yes' : 'No'
     ]);
 
     const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
@@ -351,16 +297,28 @@ export const AdminUsersTable = () => {
                   <TableRow key={user.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center relative">
                           <User className="w-4 h-4 text-primary-foreground" />
+                          {user.is_admin && (
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
+                              <Crown className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          )}
                         </div>
-                        <div className="font-medium">{user.full_name || 'No name'}</div>
+                        <div>
+                          <div className="font-medium">{user.full_name || 'No name'}</div>
+                          {user.is_admin && (
+                            <Badge variant="outline" className="text-[10px] py-0 px-1 bg-yellow-500/10 text-yellow-600 border-yellow-500/30">
+                              Admin
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 text-sm">
                         <Mail className="w-3 h-3 text-muted-foreground" />
-                        {user.email}
+                        <span className="font-mono text-xs">{user.email}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -392,7 +350,11 @@ export const AdminUsersTable = () => {
                       <Badge variant="outline" className="bg-primary/10">{user.books_read}</Badge>
                     </TableCell>
                     <TableCell>
-                      {editingCredits === user.user_id ? (
+                      {user.is_admin ? (
+                        <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30">
+                          ∞
+                        </Badge>
+                      ) : editingCredits === user.user_id ? (
                         <div className="flex items-center gap-1">
                           <Input
                             type="number"
@@ -454,11 +416,11 @@ export const AdminUsersTable = () => {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction 
+                            <AlertDialogAction
                               onClick={() => deleteUser(user)}
-                              className="bg-destructive hover:bg-destructive/90"
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             >
-                              Delete
+                              Delete User
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
