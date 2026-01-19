@@ -82,8 +82,21 @@ serve(async (req) => {
       );
     }
 
-    // NOW check user credits - only for NEW summary generation
-    if (userId && !targetLanguage) {
+    // Check if user is an admin (unlimited credits)
+    let isAdmin = false;
+    if (userId) {
+      const { data: adminCheck } = await supabase.rpc('has_role', {
+        _user_id: userId,
+        _role: 'admin'
+      });
+      isAdmin = !!adminCheck;
+      if (isAdmin) {
+        console.log('[generate-summary] User is admin - unlimited credits');
+      }
+    }
+
+    // NOW check user credits - only for NEW summary generation (skip for admins)
+    if (userId && !targetLanguage && !isAdmin) {
       const { data: preferences, error: prefsError } = await supabase
         .from('user_preferences')
         .select('daily_credits, last_credit_reset')
@@ -134,11 +147,15 @@ serve(async (req) => {
 
         // Check if user has credits
         if (currentCredits <= 0) {
+          // Calculate days until next reset
+          const daysUntilReset = 7 - daysSinceReset;
           return new Response(
             JSON.stringify({ 
               success: false,
-              error: 'No credits remaining. You get 3 credits weekly to generate new summaries.',
-              creditsRemaining: 0
+              error: 'NO_CREDITS',
+              message: `No credits remaining. You get 3 credits every week. Next reset in ${daysUntilReset} day${daysUntilReset !== 1 ? 's' : ''}.`,
+              creditsRemaining: 0,
+              daysUntilReset
             }),
             { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );

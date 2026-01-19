@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { NoCreditsPopup } from "./NoCreditsPopup";
 
 interface BookSearchProps {
   onSummaryGenerated: (summary: string, bookTitle: string) => void;
@@ -29,6 +30,8 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
   const [status, setStatus] = useState("");
   const [progressValue, setProgressValue] = useState(0);
   const [credits, setCredits] = useState<number | null>(null);
+  const [showNoCreditsPopup, setShowNoCreditsPopup] = useState(false);
+  const [daysUntilReset, setDaysUntilReset] = useState(7);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -229,26 +232,38 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
       setStatus("");
       setProgressValue(0);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error:', error);
       
       // Check if it's a credits error (from the edge function)
       let errorMessage = "Failed to process book";
       let errorTitle = "Error";
+      let showPopup = false;
       
-      if (error?.message?.includes('No credits remaining') || error?.message?.includes('credits')) {
+      const errorObj = error as { message?: string; daysUntilReset?: number };
+      
+      if (errorObj?.message?.includes('NO_CREDITS') || errorObj?.message?.includes('No credits remaining') || errorObj?.message?.includes('credits')) {
         errorTitle = "No Credits Remaining";
-        errorMessage = "You've used all your weekly credits. You get 3 free credits every week to generate new book summaries.";
+        errorMessage = "You've used all your weekly credits.";
         setCredits(0);
+        showPopup = true;
+        // Try to get days until reset from the error
+        if (errorObj?.daysUntilReset) {
+          setDaysUntilReset(errorObj.daysUntilReset);
+        }
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }
       
-      toast({
-        title: errorTitle,
-        description: errorMessage,
-        variant: "destructive",
-      });
+      if (showPopup) {
+        setShowNoCreditsPopup(true);
+      } else {
+        toast({
+          title: errorTitle,
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
       setStatus("");
       setProgressValue(0);
     } finally {
@@ -372,6 +387,13 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
           </div>
         )}
       </div>
+
+      {/* No Credits Popup */}
+      <NoCreditsPopup 
+        open={showNoCreditsPopup} 
+        onClose={() => setShowNoCreditsPopup(false)}
+        daysUntilReset={daysUntilReset}
+      />
     </Card>
   );
 };
