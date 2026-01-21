@@ -143,9 +143,18 @@ serve(async (req) => {
         );
       }
 
-      // Return audio as base64
+      // Return audio as base64 - use chunked approach to avoid stack overflow
       const audioBuffer = await response.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+      const uint8Array = new Uint8Array(audioBuffer);
+      
+      // Convert to base64 in chunks to avoid "Maximum call stack size exceeded"
+      let binaryString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.subarray(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      const base64Audio = btoa(binaryString);
 
       console.log(`Generated audio: ${audioBuffer.byteLength} bytes`);
 
