@@ -13,7 +13,23 @@ serve(async (req) => {
 
   try {
     const AZURE_TTS_KEY = Deno.env.get("AZURE_TTS_KEY");
-    const AZURE_TTS_REGION = Deno.env.get("AZURE_TTS_REGION") || "francecentral";
+    let AZURE_TTS_REGION = Deno.env.get("AZURE_TTS_REGION") || "francecentral";
+
+    // Handle case where region is provided as full URL
+    // e.g., "https://francecentral.api.cognitive.microsoft.com/" -> "francecentral"
+    if (AZURE_TTS_REGION.includes('.api.cognitive.microsoft.com')) {
+      const match = AZURE_TTS_REGION.match(/https?:\/\/([^.]+)\.api\.cognitive\.microsoft\.com/);
+      if (match) {
+        AZURE_TTS_REGION = match[1];
+        console.log(`Extracted region from URL: ${AZURE_TTS_REGION}`);
+      }
+    }
+    
+    // Also handle if it starts with https:// but doesn't match the pattern
+    if (AZURE_TTS_REGION.startsWith('https://') || AZURE_TTS_REGION.startsWith('http://')) {
+      AZURE_TTS_REGION = AZURE_TTS_REGION.replace(/https?:\/\//, '').split('.')[0];
+      console.log(`Cleaned region: ${AZURE_TTS_REGION}`);
+    }
 
     if (!AZURE_TTS_KEY) {
       console.error("AZURE_TTS_KEY not configured");
@@ -22,6 +38,8 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log(`Using Azure TTS region: ${AZURE_TTS_REGION}`);
 
     const { action, text, voiceName = "en-US-AvaNeural", rate = "1.0", pitch = "0%" } = await req.json();
 
