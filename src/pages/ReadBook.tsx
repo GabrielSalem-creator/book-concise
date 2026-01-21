@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BookmarkPlus, Share2, ArrowLeft, Settings, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle, Download, ExternalLink, FileText, Headphones, Volume2, Search, Loader2, Eye } from "lucide-react";
+import { BookmarkPlus, Share2, ArrowLeft, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle, Download, FileText, Headphones, Volume2, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -9,12 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/AuthProvider";
 import BookChat from "@/components/BookChat";
 import PdfViewerDialog from "@/components/PdfViewerDialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import AzureVoiceSelector from "@/components/AzureVoiceSelector";
 
 const ReadBook = () => {
   const { bookId } = useParams();
@@ -27,106 +22,32 @@ const ReadBook = () => {
   const [isReading, setIsReading] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [utterance, setUtterance] = useState<SpeechSynthesisUtterance | null>(null);
-  const [selectedVoice, setSelectedVoice] = useState<"random" | "male" | "female">("random");
+  const [selectedVoice, setSelectedVoice] = useState<string>("en-US-AvaNeural");
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [readingSessionId, setReadingSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [savedCharPosition, setSavedCharPosition] = useState(0);
-  const [ttsInitialized, setTtsInitialized] = useState(false);
-  const [isSeeking, setIsSeeking] = useState(false);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const hasCompletedRef = useRef(false);
   const [isSearchingPdf, setIsSearchingPdf] = useState(false);
-  const [foundPdfUrls, setFoundPdfUrls] = useState<string[]>([]);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   
-  // Ref to track if we're in iOS WebView
-  const isIOSWebView = useRef(
-    typeof navigator !== 'undefined' && 
-    /iPhone|iPad|iPod/.test(navigator.userAgent) && 
-    !(navigator as any).standalone
-  );
-
-  // Initialize TTS on first user interaction (required for iOS WebView)
-  const initializeTTS = useCallback(() => {
-    if (ttsInitialized) return;
-    
-    try {
-      // Check if speech synthesis is available
-      if (!('speechSynthesis' in window)) {
-        console.warn('Speech synthesis not supported in this browser');
-        toast({
-          title: "TTS Not Supported",
-          description: "Your browser doesn't support text-to-speech. Try Chrome or Safari.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // For iOS WebView, we need to trigger speech synthesis with user gesture
-      const silentUtterance = new SpeechSynthesisUtterance(' ');
-      silentUtterance.volume = 0.01; // Very quiet but not silent (iOS quirk)
-      silentUtterance.rate = 10; // Fast to complete quickly
-      
-      // Some iOS versions need the utterance to actually complete
-      silentUtterance.onend = () => {
-        window.speechSynthesis.cancel();
-      };
-      
-      silentUtterance.onerror = () => {
-        // Silently ignore initialization errors
-        console.warn('TTS silent init failed, continuing anyway');
-      };
-      
-      window.speechSynthesis.speak(silentUtterance);
-      
-      // Pre-load voices with multiple attempts for reliability
-      const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0) {
-          console.log(`TTS initialized with ${voices.length} voices available`);
-        }
-      };
-      
-      loadVoices();
-      setTimeout(loadVoices, 100);
-      setTimeout(loadVoices, 500);
-      
-      // Also listen for voices changed event
-      if (window.speechSynthesis.onvoiceschanged !== undefined) {
-        window.speechSynthesis.onvoiceschanged = loadVoices;
-      }
-      
-      setTtsInitialized(true);
-    } catch (e) {
-      console.warn('TTS initialization failed:', e);
-    }
-  }, [ttsInitialized, toast]);
+  // Audio refs for Azure TTS
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentAudioUrlRef = useRef<string | null>(null);
 
   // Cleanup: Stop audio when leaving the page
   useEffect(() => {
     return () => {
-      window.speechSynthesis.cancel();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+      if (currentAudioUrlRef.current) {
+        URL.revokeObjectURL(currentAudioUrlRef.current);
+      }
     };
   }, []);
-  
-  // Initialize TTS on mount with user gesture for iOS
-  useEffect(() => {
-    const handleFirstInteraction = () => {
-      initializeTTS();
-      document.removeEventListener('touchstart', handleFirstInteraction);
-      document.removeEventListener('click', handleFirstInteraction);
-    };
-    
-    document.addEventListener('touchstart', handleFirstInteraction, { once: true });
-    document.addEventListener('click', handleFirstInteraction, { once: true });
-    
-    return () => {
-      document.removeEventListener('touchstart', handleFirstInteraction);
-      document.removeEventListener('click', handleFirstInteraction);
-    };
-  }, [initializeTTS]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -140,7 +61,6 @@ const ReadBook = () => {
       }
       checkBookmark();
       loadReadingSession();
-      // Create reading session immediately when page loads
       createInitialSession();
     }
   }, [bookId, user]);
@@ -162,7 +82,6 @@ const ReadBook = () => {
   const createInitialSession = async () => {
     if (!user || !bookId) return;
 
-    // Check if there's already an active session for this book
     const { data: existingSession } = await supabase
       .from('reading_sessions')
       .select('id')
@@ -176,7 +95,6 @@ const ReadBook = () => {
       return;
     }
 
-    // Complete other active sessions
     await supabase
       .from('reading_sessions')
       .update({ completed_at: new Date().toISOString() })
@@ -184,7 +102,6 @@ const ReadBook = () => {
       .is('completed_at', null)
       .neq('book_id', bookId);
 
-    // Create new session
     const { data: newSession } = await supabase
       .from('reading_sessions')
       .insert({
@@ -203,32 +120,20 @@ const ReadBook = () => {
   const searchAndLoadBook = async () => {
     setIsLoading(true);
     
-    // First try to load the book directly
-    const { data: existingBook, error: bookError } = await supabase
+    const { data: existingBook } = await supabase
       .from('books')
-      .select(`
-        *,
-        summaries (content)
-      `)
+      .select(`*, summaries (content)`)
       .eq('id', bookId)
       .single();
 
     if (existingBook && existingBook.summaries && existingBook.summaries.length > 0) {
       setBook(existingBook);
-      const cleanSummary = existingBook.summaries[0].content
-        .replace(/#+\s/g, '')
-        .replace(/[-*_]{2,}/g, '')
-        .replace(/^\s*[-*]\s/gm, '')
-        .replace(/\*\*/g, '')
-        .replace(/__/g, '')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .trim();
+      const cleanSummary = cleanMarkdown(existingBook.summaries[0].content);
       setSummary(cleanSummary);
       setIsLoading(false);
       return;
     }
 
-    // If book exists but no summary, generate it
     if (existingBook) {
       toast({
         title: "Generating summary",
@@ -239,45 +144,17 @@ const ReadBook = () => {
         body: { bookTitle: existingBook.title, bookId: existingBook.id }
       });
 
-    if (summaryError || !summaryData?.summary) {
-      // Check if it's a credit error by looking at the response
-      const errorMessage = summaryData?.error || summaryError?.message || '';
-      const isCreditsError = errorMessage.includes('No credits remaining') || 
-                            summaryData?.creditsRemaining === 0;
-      
-      if (isCreditsError) {
-        toast({
-          title: "Daily limit reached",
-          description: "You've used your 2 daily summary credits. They reset tomorrow!",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to generate summary",
-          variant: "destructive",
-        });
+      if (summaryError || !summaryData?.summary) {
+        handleSummaryError(summaryData, summaryError);
+        return;
       }
-      navigate('/dashboard');
-      return;
-    }
 
-      const cleanSummary = summaryData.summary
-        .replace(/#+\s/g, '')
-        .replace(/[-*_]{2,}/g, '')
-        .replace(/^\s*[-*]\s/gm, '')
-        .replace(/\*\*/g, '')
-        .replace(/__/g, '')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .trim();
-      
       setBook(existingBook);
-      setSummary(cleanSummary);
+      setSummary(cleanMarkdown(summaryData.summary));
       setIsLoading(false);
       return;
     }
 
-    // If book doesn't exist at all, search for it using the title from reading plan
     const { data: planBook } = await supabase
       .from('reading_plan_books')
       .select('books(title)')
@@ -302,7 +179,6 @@ const ReadBook = () => {
       description: `Finding "${bookTitle}"...`,
     });
 
-    // Search for the PDF
     const { data: pdfData, error: pdfError } = await supabase.functions.invoke('search-book-pdf', {
       body: { query: bookTitle }
     });
@@ -318,67 +194,25 @@ const ReadBook = () => {
       return;
     }
 
-    // Update the book with the PDF URL
-    const { error: updateError } = await supabase
+    await supabase
       .from('books')
       .update({ pdf_url: pdfData.pdfUrl })
       .eq('id', bookId);
-
-    if (updateError) {
-      toast({
-        title: "Error",
-        description: "Failed to save book PDF",
-        variant: "destructive",
-      });
-      navigate('/dashboard');
-      setIsLoading(false);
-      return;
-    }
 
     toast({
       title: "Generating summary",
       description: "Please wait while we generate the book summary...",
     });
 
-    // Generate the summary
     const { data: summaryData, error: summaryError } = await supabase.functions.invoke('generate-summary', {
       body: { bookTitle, bookId }
     });
 
     if (summaryError || !summaryData?.summary) {
-      // Check if it's a credit error by looking at the response
-      const errorMessage = summaryData?.error || summaryError?.message || '';
-      const isCreditsError = errorMessage.includes('No credits remaining') || 
-                            summaryData?.creditsRemaining === 0;
-      
-      if (isCreditsError) {
-        toast({
-          title: "Daily limit reached",
-          description: "You've used your 2 daily summary credits. They reset tomorrow!",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to generate summary",
-          variant: "destructive",
-        });
-      }
-      navigate('/dashboard');
-      setIsLoading(false);
+      handleSummaryError(summaryData, summaryError);
       return;
     }
 
-    const cleanSummary = summaryData.summary
-      .replace(/#+\s/g, '')
-      .replace(/[-*_]{2,}/g, '')
-      .replace(/^\s*[-*]\s/gm, '')
-      .replace(/\*\*/g, '')
-      .replace(/__/g, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .trim();
-
-    // Load the complete book data
     const { data: finalBook } = await supabase
       .from('books')
       .select('*')
@@ -386,7 +220,7 @@ const ReadBook = () => {
       .single();
 
     setBook(finalBook);
-    setSummary(cleanSummary);
+    setSummary(cleanMarkdown(summaryData.summary));
     setIsLoading(false);
   };
 
@@ -394,10 +228,7 @@ const ReadBook = () => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('books')
-      .select(`
-        *,
-        summaries (content)
-      `)
+      .select(`*, summaries (content)`)
       .eq('id', bookId)
       .single();
 
@@ -413,22 +244,12 @@ const ReadBook = () => {
 
     setBook(data);
     
-    // If summary exists, use it (no credits consumed)
     if (data.summaries && data.summaries.length > 0) {
-      const cleanSummary = data.summaries[0].content
-        .replace(/#+\s/g, '')
-        .replace(/[-*_]{2,}/g, '')
-        .replace(/^\s*[-*]\s/gm, '')
-        .replace(/\*\*/g, '')
-        .replace(/__/g, '')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .trim();
-      setSummary(cleanSummary);
+      setSummary(cleanMarkdown(data.summaries[0].content));
       setIsLoading(false);
       return;
     }
 
-    // No summary exists - generate one (will consume credits)
     toast({
       title: "Generating summary",
       description: "Please wait while we generate the book summary...",
@@ -439,29 +260,16 @@ const ReadBook = () => {
     });
 
     if (summaryError || !summaryData?.summary) {
-      const errorMessage = summaryData?.error || summaryError?.message || '';
-      const isCreditsError = errorMessage.includes('No credits remaining') || 
-                            summaryData?.creditsRemaining === 0;
-      
-      if (isCreditsError) {
-        toast({
-          title: "Daily limit reached",
-          description: "You've used your 2 daily summary credits. They reset tomorrow!",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to generate summary",
-          variant: "destructive",
-        });
-      }
-      navigate('/dashboard');
-      setIsLoading(false);
+      handleSummaryError(summaryData, summaryError);
       return;
     }
 
-    const cleanSummary = summaryData.summary
+    setSummary(cleanMarkdown(summaryData.summary));
+    setIsLoading(false);
+  };
+
+  const cleanMarkdown = (text: string) => {
+    return text
       .replace(/#+\s/g, '')
       .replace(/[-*_]{2,}/g, '')
       .replace(/^\s*[-*]\s/gm, '')
@@ -469,8 +277,26 @@ const ReadBook = () => {
       .replace(/__/g, '')
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .trim();
+  };
+
+  const handleSummaryError = (data: any, error: any) => {
+    const errorMessage = data?.error || error?.message || '';
+    const isCreditsError = errorMessage.includes('No credits remaining') || data?.creditsRemaining === 0;
     
-    setSummary(cleanSummary);
+    if (isCreditsError) {
+      toast({
+        title: "No more credits",
+        description: "Wait one week for your credits to reset!",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: "Failed to generate summary",
+        variant: "destructive",
+      });
+    }
+    navigate('/dashboard');
     setIsLoading(false);
   };
 
@@ -488,11 +314,6 @@ const ReadBook = () => {
     if (data) {
       setReadingSessionId(data.id);
       setProgress(data.progress_percentage || 0);
-      // Restore character position from last_position
-      if (data.last_position) {
-        const charPos = parseInt(data.last_position, 10);
-        setSavedCharPosition(charPos);
-      }
     }
   };
 
@@ -512,7 +333,6 @@ const ReadBook = () => {
   const createOrUpdateSession = async () => {
     if (!user || !bookId) return;
 
-    // Complete other active sessions
     const { data: activeSessions } = await supabase
       .from('reading_sessions')
       .select('id')
@@ -527,7 +347,6 @@ const ReadBook = () => {
         .in('id', activeSessions.map(s => s.id));
     }
 
-    // Create or update current session
     if (readingSessionId) {
       await supabase
         .from('reading_sessions')
@@ -550,79 +369,8 @@ const ReadBook = () => {
     }
   };
 
-  const getVoice = () => {
-    const voices = window.speechSynthesis.getVoices();
-    
-    // Prioritize high-quality voices (premium/enhanced voices)
-    const premiumVoiceNames = [
-      // iOS Premium Voices
-      'Samantha', 'Karen', 'Daniel', 'Moira', 'Tessa', 'Rishi', 'Veena',
-      // macOS Premium Voices  
-      'Alex', 'Ava', 'Allison', 'Susan', 'Tom', 'Oliver', 'Kate',
-      // Windows Premium Voices
-      'Zira', 'David', 'Mark', 'Hazel', 'George', 'Susan',
-      // Google Premium Voices
-      'Google US English', 'Google UK English Female', 'Google UK English Male',
-      // Android Voices
-      'English United States', 'English United Kingdom'
-    ];
-    
-    // Filter for high-quality English voices first
-    const englishVoices = voices.filter(v => 
-      v.lang.startsWith('en') || v.lang === 'en-US' || v.lang === 'en-GB'
-    );
-    
-    // Find premium voices that match gender preference
-    const findPremiumVoice = (gender: 'male' | 'female' | 'any') => {
-      const genderKeywords = {
-        female: ['Samantha', 'Karen', 'Ava', 'Allison', 'Susan', 'Zira', 'Kate', 'Hazel', 'Moira', 'Tessa', 'Veena', 'Female'],
-        male: ['Daniel', 'Alex', 'David', 'Tom', 'Oliver', 'Mark', 'George', 'Rishi', 'Male']
-      };
-      
-      // First try premium voices
-      for (const premiumName of premiumVoiceNames) {
-        const match = englishVoices.find(v => v.name.includes(premiumName));
-        if (match) {
-          if (gender === 'any') return match;
-          const keywords = genderKeywords[gender];
-          if (keywords.some(k => match.name.includes(k))) return match;
-        }
-      }
-      
-      // Fallback to any English voice with gender match
-      if (gender !== 'any') {
-        const keywords = genderKeywords[gender];
-        const genderMatch = englishVoices.find(v => 
-          keywords.some(k => v.name.toLowerCase().includes(k.toLowerCase()))
-        );
-        if (genderMatch) return genderMatch;
-      }
-      
-      // Final fallback: first English voice or any voice
-      return englishVoices[0] || voices[0] || null;
-    };
-
-    if (selectedVoice === "female") {
-      return findPremiumVoice('female');
-    } else if (selectedVoice === "male") {
-      return findPremiumVoice('male');
-    } else {
-      // Random: pick best available
-      return findPremiumVoice('any');
-    }
-  };
-
+  // Azure TTS Play Handler
   const handlePlay = async () => {
-    // Check if speech synthesis is available
-    if (!('speechSynthesis' in window)) {
-      toast({
-        title: "Not Supported",
-        description: "Text-to-speech is not supported in your browser. Try Chrome or Safari.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (!summary) {
       toast({
         title: "No content",
@@ -634,169 +382,126 @@ const ReadBook = () => {
 
     await createOrUpdateSession();
 
-    if (isPaused && utterance) {
-      try {
-        window.speechSynthesis.resume();
-        setIsPaused(false);
-        setIsReading(true);
-      } catch (e) {
-        console.error('Resume failed:', e);
-        // If resume fails, start from scratch
-        window.speechSynthesis.cancel();
-        setIsPaused(false);
-      }
+    // If paused, resume
+    if (isPaused && audioRef.current) {
+      audioRef.current.play();
+      setIsPaused(false);
+      setIsReading(true);
       return;
     }
 
-    // Cancel any existing speech
-    window.speechSynthesis.cancel();
+    // Stop any existing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+    if (currentAudioUrlRef.current) {
+      URL.revokeObjectURL(currentAudioUrlRef.current);
+    }
 
-    // Helper function to start speech with voice
-    const startSpeech = (voice: SpeechSynthesisVoice | null) => {
-      try {
-        // If we have a saved position, start from there
-        const startPos = savedCharPosition > 0 ? savedCharPosition : 0;
-        const textToRead = startPos > 0 ? summary.substring(startPos) : summary;
-        
-        if (!textToRead.trim()) {
-          toast({
-            title: "No content",
-            description: "Summary is empty",
-            variant: "destructive",
-          });
-          return;
+    setIsGeneratingAudio(true);
+
+    try {
+      console.log(`Generating Azure TTS with voice: ${selectedVoice}`);
+      
+      const { data, error } = await supabase.functions.invoke('azure-tts', {
+        body: {
+          action: 'speak',
+          text: summary,
+          voiceName: selectedVoice,
         }
-        
-        const newUtterance = new SpeechSynthesisUtterance(textToRead);
-        newUtterance.rate = 0.9;
-        newUtterance.pitch = 1;
-        newUtterance.volume = 1;
-        
-        if (voice) {
-          newUtterance.voice = voice;
-          newUtterance.lang = voice.lang;
-        } else {
-          // Fallback to default language
-          newUtterance.lang = 'en-US';
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (!data?.audio) {
+        throw new Error('No audio returned from Azure TTS');
+      }
+
+      // Convert base64 to audio blob
+      const binaryString = atob(data.audio);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      currentAudioUrlRef.current = audioUrl;
+
+      // Create and play audio
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.addEventListener('timeupdate', () => {
+        if (audio.duration > 0) {
+          const currentProgress = (audio.currentTime / audio.duration) * 100;
+          setProgress(currentProgress);
+          
+          // Save progress every 10%
+          if (readingSessionId && Math.floor(currentProgress) % 10 === 0) {
+            supabase
+              .from('reading_sessions')
+              .update({ 
+                progress_percentage: currentProgress,
+                last_read_at: new Date().toISOString()
+              })
+              .eq('id', readingSessionId)
+              .then();
+          }
         }
+      });
 
-        let lastProgress = startPos > 0 ? (startPos / summary.length) * 100 : 0;
-        
-        newUtterance.onboundary = (event) => {
-          if (event.charIndex >= 0) {
-            // Calculate actual character position in the full summary
-            const actualCharPos = startPos + event.charIndex;
-            const currentProgress = (actualCharPos / summary.length) * 100;
-            setProgress(currentProgress);
-            setSavedCharPosition(actualCharPos);
-            
-            if (currentProgress - lastProgress >= 10 && readingSessionId) {
-              lastProgress = currentProgress;
-              supabase
-                .from('reading_sessions')
-                .update({ 
-                  progress_percentage: currentProgress,
-                  last_position: actualCharPos.toString(),
-                  last_read_at: new Date().toISOString()
-                })
-                .eq('id', readingSessionId)
-                .then();
-            }
-          }
-        };
-
-        newUtterance.onend = async () => {
-          setIsReading(false);
-          setIsPaused(false);
-          setProgress(100);
-          setSavedCharPosition(0);
-
-          // Handle book completion and redirect
-          await handleBookCompletion();
-        };
-
-        newUtterance.onerror = (event) => {
-          console.error('TTS Error:', event.error);
-          // Only show error for actual failures, not interruptions
-          if (event.error !== 'interrupted' && event.error !== 'canceled') {
-            setIsReading(false);
-            setIsPaused(false);
-            
-            let errorMessage = "Could not play audio.";
-            if (event.error === 'network') {
-              errorMessage = "Network error. Check your connection.";
-            } else if (event.error === 'synthesis-unavailable') {
-              errorMessage = "Speech synthesis unavailable. Try refreshing.";
-            } else if (event.error === 'not-allowed') {
-              errorMessage = "Audio blocked. Click play again.";
-            }
-            
-            toast({
-              title: "Audio Error",
-              description: errorMessage,
-              variant: "destructive",
-            });
-          }
-        };
-
-        setUtterance(newUtterance);
-        window.speechSynthesis.speak(newUtterance);
-        setIsReading(true);
+      audio.addEventListener('ended', async () => {
+        setIsReading(false);
         setIsPaused(false);
-        
-        console.log('TTS started with voice:', voice?.name || 'default');
-      } catch (e) {
-        console.error('TTS start failed:', e);
+        setProgress(100);
+        await handleBookCompletion();
+      });
+
+      audio.addEventListener('error', (e) => {
+        console.error('Audio playback error:', e);
+        setIsReading(false);
+        setIsGeneratingAudio(false);
         toast({
-          title: "Audio Error",
-          description: "Failed to start audio playback. Please refresh and try again.",
+          title: "Playback Error",
+          description: "Could not play the audio",
           variant: "destructive",
         });
-      }
-    };
+      });
 
-    // Load voices and start speech with multiple fallback strategies
-    let voices = window.speechSynthesis.getVoices();
-    
-    if (voices.length === 0) {
-      // Strategy 1: Wait for voiceschanged event
-      const voicesChangedHandler = () => {
-        voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0) {
-          window.speechSynthesis.onvoiceschanged = null;
-          const voice = getVoice();
-          startSpeech(voice);
-        }
-      };
-      window.speechSynthesis.onvoiceschanged = voicesChangedHandler;
+      await audio.play();
+      setIsReading(true);
+      setIsGeneratingAudio(false);
       
-      // Strategy 2: Timeout fallback - try without voice
-      setTimeout(() => {
-        if (!isReading) {
-          voices = window.speechSynthesis.getVoices();
-          const voice = voices.length > 0 ? getVoice() : null;
-          startSpeech(voice);
-        }
-      }, 200);
-    } else {
-      const voice = getVoice();
-      startSpeech(voice);
+      toast({
+        title: "Now Playing",
+        description: `Reading with ${selectedVoice.split('-').slice(2).join(' ').replace('Neural', '')} voice`,
+      });
+
+    } catch (error: any) {
+      console.error('Azure TTS failed:', error);
+      setIsGeneratingAudio(false);
+      toast({
+        title: "Audio Generation Failed",
+        description: error.message || "Could not generate speech. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
   const handlePause = async () => {
-    if (isReading) {
-      window.speechSynthesis.pause();
+    if (isReading && audioRef.current) {
+      audioRef.current.pause();
       setIsPaused(true);
       setIsReading(false);
       
-      // Save current position to database
       if (readingSessionId) {
         await supabase
           .from('reading_sessions')
           .update({ 
             progress_percentage: progress,
-            last_position: savedCharPosition.toString(),
             last_read_at: new Date().toISOString()
           })
           .eq('id', readingSessionId);
@@ -805,65 +510,58 @@ const ReadBook = () => {
   };
 
   const handleStop = async () => {
-    window.speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     setIsReading(false);
     setIsPaused(false);
-    setUtterance(null);
-    setSavedCharPosition(0);
     setProgress(0);
     
-    // Reset position in database
     if (readingSessionId) {
       await supabase
         .from('reading_sessions')
         .update({ 
           progress_percentage: 0,
-          last_position: '0',
           last_read_at: new Date().toISOString()
         })
         .eq('id', readingSessionId);
     }
   };
 
-  // Handle book completion - mark as finished and redirect
   const handleBookCompletion = async () => {
-    // Only check hasCompletedRef to prevent multiple triggers
     if (hasCompletedRef.current) return;
     
     hasCompletedRef.current = true;
     setIsCompleting(true);
     
-    // Stop any ongoing speech
-    window.speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
     setIsReading(false);
     setIsPaused(false);
 
     const bookTitle = book?.title || "the book";
 
-    // Mark session as completed if we have a session
     if (readingSessionId) {
       await supabase
         .from('reading_sessions')
         .update({ 
           progress_percentage: 100,
-          last_position: '0',
           completed_at: new Date().toISOString()
         })
         .eq('id', readingSessionId);
     }
 
-    // Check if this book is part of a reading plan for the current user
     if (user && bookId) {
       const { data: planBooks } = await supabase
         .from('reading_plan_books')
         .select('id, goal_id, goals!inner(user_id)')
         .eq('book_id', bookId);
 
-      // Find the plan book that belongs to the current user
       const userPlanBook = planBooks?.find((pb: any) => pb.goals?.user_id === user.id);
 
       if (userPlanBook) {
-        // Mark book as completed in the plan
         await supabase
           .from('reading_plan_books')
           .update({ 
@@ -872,7 +570,6 @@ const ReadBook = () => {
           })
           .eq('id', userPlanBook.id);
 
-        // Check if all books in the plan are completed
         const { data: allPlanBooks } = await supabase
           .from('reading_plan_books')
           .select('status')
@@ -891,55 +588,43 @@ const ReadBook = () => {
       }
     }
 
-    // Show completion toast with book title
     toast({
       title: "Congratulations! 🎉",
       description: `You successfully finished "${bookTitle}"`,
     });
 
-    // Redirect to dashboard immediately
     navigate('/dashboard');
   };
 
-  // Seek to a specific position in the audio
   const handleSeek = async (newProgress: number[]) => {
-    if (!summary) return;
+    if (!audioRef.current) return;
     
     const targetProgress = newProgress[0];
-    const newCharPosition = Math.floor((targetProgress / 100) * summary.length);
     
-    // Stop current speech
-    window.speechSynthesis.cancel();
-    setIsReading(false);
-    setIsPaused(false);
-    setUtterance(null);
+    if (audioRef.current.duration > 0) {
+      audioRef.current.currentTime = (targetProgress / 100) * audioRef.current.duration;
+    }
     
-    // Update state
     setProgress(targetProgress);
-    setSavedCharPosition(newCharPosition);
     
-    // If reached 100%, complete the book
     if (targetProgress >= 100) {
       await handleBookCompletion();
       return;
     }
     
-    // Save position to database
     if (readingSessionId) {
       await supabase
         .from('reading_sessions')
         .update({ 
           progress_percentage: targetProgress,
-          last_position: newCharPosition.toString(),
           last_read_at: new Date().toISOString()
         })
         .eq('id', readingSessionId);
     }
   };
 
-  // Skip forward/backward by a percentage
   const handleSkip = (direction: 'forward' | 'backward') => {
-    const skipAmount = 10; // 10% skip
+    const skipAmount = 10;
     let newProgress = direction === 'forward' 
       ? Math.min(100, progress + skipAmount)
       : Math.max(0, progress - skipAmount);
@@ -1013,7 +698,6 @@ const ReadBook = () => {
       return;
     }
     
-    // Open PDF in new tab for download
     window.open(book.pdf_url, '_blank');
     toast({
       title: "Opening PDF",
@@ -1021,20 +705,10 @@ const ReadBook = () => {
     });
   };
 
-  const getSourceDomain = (url: string) => {
-    try {
-      const urlObj = new URL(url);
-      return urlObj.hostname.replace('www.', '');
-    } catch {
-      return 'Unknown source';
-    }
-  };
-
   const searchForPdf = async () => {
     if (!book?.title) return;
     
     setIsSearchingPdf(true);
-    setFoundPdfUrls([]);
     
     try {
       const searchQuery = book.author 
@@ -1048,35 +722,20 @@ const ReadBook = () => {
       if (error) throw error;
       
       if (data.success && data.pdfUrls?.length > 0) {
-        setFoundPdfUrls(data.pdfUrls);
-        
-        // Update book in database with first found URL
         await supabase
           .from('books')
           .update({ pdf_url: data.pdfUrls[0] })
           .eq('id', book.id);
         
-        // Update local state
         setBook({ ...book, pdf_url: data.pdfUrls[0] });
         
         toast({
           title: "PDF Found!",
           description: `Found ${data.pdfUrls.length} PDF source(s)`,
         });
-      } else {
-        toast({
-          title: "No PDF Found",
-          description: "Could not find a PDF for this book",
-          variant: "destructive",
-        });
       }
     } catch (error) {
       console.error('Error searching for PDF:', error);
-      toast({
-        title: "Search Failed",
-        description: "Could not search for PDF",
-        variant: "destructive",
-      });
     } finally {
       setIsSearchingPdf(false);
     }
@@ -1113,7 +772,6 @@ const ReadBook = () => {
             </Button>
             
             <div className="flex-1 min-w-0">
-              {/* Clickable Title with Shine Effect */}
               {book.pdf_url ? (
                 <button
                   onClick={() => setIsPdfViewerOpen(true)}
@@ -1123,7 +781,6 @@ const ReadBook = () => {
                     <span className="bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent group-hover:from-accent group-hover:via-primary group-hover:to-accent transition-all duration-300">
                       {book.title}
                     </span>
-                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300 pointer-events-none" />
                   </h1>
                   <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 group-hover:text-primary/70 transition-colors">
                     <Eye className="w-3 h-3" />
@@ -1148,7 +805,6 @@ const ReadBook = () => {
               )}
             </div>
 
-            {/* PDF Actions */}
             {book.pdf_url && (
               <div className="flex items-center gap-2">
                 <Button
@@ -1175,14 +831,25 @@ const ReadBook = () => {
 
           {/* Audio Player Card */}
           <Card className="glass-morphism p-4 sm:p-6 border-primary/20 overflow-hidden relative">
-            {/* Decorative Background */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none" />
             
             <div className="relative space-y-5">
               {/* Now Playing Header */}
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Volume2 className="w-4 h-4 text-primary animate-pulse" />
-                <span className="text-xs font-medium uppercase tracking-wider">Audio Summary</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Volume2 className="w-4 h-4 text-primary animate-pulse" />
+                  <span className="text-xs font-medium uppercase tracking-wider">Azure Neural TTS</span>
+                </div>
+              </div>
+
+              {/* Voice Selector */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <span className="text-sm font-medium text-muted-foreground">Voice:</span>
+                <AzureVoiceSelector
+                  selectedVoice={selectedVoice}
+                  onVoiceChange={setSelectedVoice}
+                  disabled={isReading || isGeneratingAudio}
+                />
               </div>
 
               {/* Progress Section */}
@@ -1192,7 +859,6 @@ const ReadBook = () => {
                   <span className="font-bold text-primary text-lg">{Math.round(progress)}%</span>
                 </div>
                 
-                {/* Skip Controls + Slider */}
                 <div className="flex items-center gap-3">
                   <Button
                     variant="ghost"
@@ -1200,7 +866,7 @@ const ReadBook = () => {
                     onClick={() => handleSkip('backward')}
                     className="h-10 w-10 rounded-full hover:bg-primary/10 transition-colors shrink-0"
                     aria-label="Skip backward 10%"
-                    disabled={progress <= 0}
+                    disabled={progress <= 0 || !audioRef.current}
                   >
                     <SkipBack className="w-5 h-5" />
                   </Button>
@@ -1213,6 +879,7 @@ const ReadBook = () => {
                       step={1}
                       className="w-full cursor-pointer"
                       aria-label="Seek through the audio"
+                      disabled={!audioRef.current}
                     />
                   </div>
                   
@@ -1222,7 +889,7 @@ const ReadBook = () => {
                     onClick={() => handleSkip('forward')}
                     className="h-10 w-10 rounded-full hover:bg-primary/10 transition-colors shrink-0"
                     aria-label="Skip forward 10%"
-                    disabled={progress >= 100}
+                    disabled={progress >= 100 || !audioRef.current}
                   >
                     <SkipForward className="w-5 h-5" />
                   </Button>
@@ -1231,9 +898,17 @@ const ReadBook = () => {
 
               {/* Main Controls */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                {/* Play/Pause Controls */}
                 <div className="flex items-center justify-center sm:justify-start gap-3">
-                  {isPaused || !isReading ? (
+                  {isGeneratingAudio ? (
+                    <Button
+                      size="lg"
+                      disabled
+                      className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary px-8 h-14 rounded-full shadow-lg min-w-[160px]"
+                    >
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <span className="text-lg font-semibold">Generating...</span>
+                    </Button>
+                  ) : isPaused || !isReading ? (
                     <Button
                       size="lg"
                       onClick={handlePlay}
@@ -1283,39 +958,6 @@ const ReadBook = () => {
 
                 {/* Secondary Controls */}
                 <div className="flex items-center justify-center sm:justify-end gap-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-11 w-11 rounded-full hover:bg-primary/10 hover:border-primary/50 transition-all" 
-                        aria-label="Voice settings"
-                      >
-                        <Settings className="w-5 h-5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="glass-morphism rounded-xl p-1">
-                      <DropdownMenuItem 
-                        onClick={() => setSelectedVoice("random")}
-                        className="rounded-lg cursor-pointer"
-                      >
-                        🎲 Random Voice {selectedVoice === "random" && "✓"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onClick={() => setSelectedVoice("male")}
-                        className="rounded-lg cursor-pointer"
-                      >
-                        👨 Male Voice {selectedVoice === "male" && "✓"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onClick={() => setSelectedVoice("female")}
-                        className="rounded-lg cursor-pointer"
-                      >
-                        👩 Female Voice {selectedVoice === "female" && "✓"}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
                   <Button
                     variant="outline"
                     size="icon"
