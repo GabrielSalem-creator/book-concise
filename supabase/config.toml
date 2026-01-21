@@ -17,3 +17,12 @@ verify_jwt = false
 
 [functions.chat-with-book]
 verify_jwt = false
+
+[functions.azure-tts]
+verify_jwt = false
+
+[functions.get-admin-users]
+verify_jwt = false
+
+[functions.update-user-credits]
+verify_jwt = false
