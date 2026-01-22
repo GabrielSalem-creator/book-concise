@@ -28,25 +28,48 @@ const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author }: PdfViewerDi
   
   const handleDownload = async () => {
     try {
-      // Fetch the PDF as a blob to trigger proper download
-      const response = await fetch(pdfUrl);
-      if (!response.ok) throw new Error('Failed to fetch PDF');
+      const response = await fetch(pdfUrl, {
+        mode: 'cors',
+        credentials: 'omit',
+      });
       
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      
-      // Create anchor to trigger Save As dialog
+      if (response.ok) {
+        const blob = await response.blob();
+        const fileName = `${title.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')}.pdf`;
+        
+        // Use Web Share API for mobile if available
+        if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'application/pdf' })] })) {
+          const file = new File([blob], fileName, { type: 'application/pdf' });
+          try {
+            await navigator.share({ files: [file], title: title });
+            return;
+          } catch (shareErr: any) {
+            if (shareErr.name === 'AbortError') return;
+          }
+        }
+        
+        // Fallback: blob download
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } else {
+        throw new Error('Fetch failed');
+      }
+    } catch (error) {
+      // Final fallback
       const link = document.createElement('a');
-      link.href = url;
-      link.download = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+      link.href = pdfUrl;
+      link.download = `${title.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')}.pdf`;
+      link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      setTimeout(() => URL.revokeObjectURL(url), 100);
-    } catch (error) {
-      // Fallback to opening in new tab
-      window.open(pdfUrl, '_blank');
     }
   };
 

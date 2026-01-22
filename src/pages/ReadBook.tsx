@@ -782,12 +782,38 @@ const ReadBook = () => {
     }
   };
 
-  const handleShare = () => {
-    navigator.clipboard.writeText(summary);
-    toast({
-      title: "Copied!",
-      description: "Summary copied to clipboard",
-    });
+  const handleShare = async () => {
+    // Use Web Share API if available (mobile/iOS)
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: book?.title || 'Book Summary',
+          text: summary.substring(0, 500) + '...',
+          url: window.location.href,
+        });
+        toast({
+          title: "Shared!",
+          description: "Content shared successfully",
+        });
+      } catch (err: any) {
+        // User cancelled or share failed
+        if (err.name !== 'AbortError') {
+          // Fallback to clipboard
+          await navigator.clipboard.writeText(summary);
+          toast({
+            title: "Copied!",
+            description: "Summary copied to clipboard",
+          });
+        }
+      }
+    } else {
+      // Fallback for desktop
+      await navigator.clipboard.writeText(summary);
+      toast({
+        title: "Copied!",
+        description: "Summary copied to clipboard",
+      });
+    }
   };
 
   const handleDownloadPDF = async () => {
@@ -800,41 +826,75 @@ const ReadBook = () => {
       return;
     }
     
+    toast({
+      title: "Preparing download...",
+      description: "Getting the PDF ready",
+    });
+
     try {
-      toast({
-        title: "Preparing download...",
-        description: "Fetching the PDF file",
+      // Try using fetch with no-cors mode and blob
+      const response = await fetch(book.pdf_url, {
+        mode: 'cors',
+        credentials: 'omit',
       });
       
-      // Fetch the PDF as a blob to trigger a proper download
-      const response = await fetch(book.pdf_url);
-      if (!response.ok) throw new Error('Failed to fetch PDF');
+      if (response.ok) {
+        const blob = await response.blob();
+        const fileName = `${book.title.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')}.pdf`;
+        
+        // Check if Web Share API supports files (iOS/mobile)
+        if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'application/pdf' })] })) {
+          const file = new File([blob], fileName, { type: 'application/pdf' });
+          try {
+            await navigator.share({
+              files: [file],
+              title: book.title,
+            });
+            toast({
+              title: "Success!",
+              description: "PDF shared/saved",
+            });
+            return;
+          } catch (shareErr: any) {
+            if (shareErr.name === 'AbortError') return;
+            // Fall through to anchor download
+          }
+        }
+        
+        // Fallback: Create blob URL and trigger download
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        
+        toast({
+          title: "Download started",
+          description: "Check your downloads folder",
+        });
+      } else {
+        throw new Error('Fetch failed');
+      }
+    } catch (error) {
+      console.error('Download failed:', error);
       
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      
-      // Create a temporary anchor element to trigger download with Save As dialog
+      // Final fallback: Direct link with download attribute
       const link = document.createElement('a');
-      link.href = url;
-      link.download = `${book.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+      link.href = book.pdf_url;
+      link.download = `${book.title.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')}.pdf`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       
-      // Clean up the blob URL
-      setTimeout(() => URL.revokeObjectURL(url), 100);
-      
       toast({
-        title: "Download started",
-        description: "Your PDF is being downloaded",
-      });
-    } catch (error) {
-      console.error('Download failed:', error);
-      // Fallback: open in new tab if download fails
-      window.open(book.pdf_url, '_blank');
-      toast({
-        title: "Download fallback",
-        description: "Opening PDF in new tab instead",
+        title: "Opening PDF",
+        description: "Save it from your browser",
       });
     }
   };
