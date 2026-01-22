@@ -26,8 +26,28 @@ const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author }: PdfViewerDi
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50));
   const handleRotate = () => setRotation(prev => (prev + 90) % 360);
   
-  const handleDownload = () => {
-    window.open(pdfUrl, '_blank');
+  const handleDownload = async () => {
+    try {
+      // Fetch the PDF as a blob to trigger proper download
+      const response = await fetch(pdfUrl);
+      if (!response.ok) throw new Error('Failed to fetch PDF');
+      
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      
+      // Create anchor to trigger Save As dialog
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (error) {
+      // Fallback to opening in new tab
+      window.open(pdfUrl, '_blank');
+    }
   };
 
   const handleOpenExternal = () => {
