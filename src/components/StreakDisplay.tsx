@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Flame, Zap, Gift, Clock, AlertTriangle } from "lucide-react";
+import { Flame, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface StreakDisplayProps {
@@ -54,60 +54,52 @@ export const StreakDisplay = ({ streak, lastReadDate, showUrgency = true }: Stre
     return () => clearInterval(animationInterval);
   }, []);
 
-  // Calculate streak tier for visual intensity
+  // Calculate streak tier for visual intensity - using semantic design tokens
   const getStreakTier = () => {
-    if (streak >= 30) return { tier: "legendary", color: "from-yellow-400 via-orange-500 to-red-600", flames: 5 };
-    if (streak >= 14) return { tier: "blazing", color: "from-orange-400 via-red-500 to-pink-600", flames: 4 };
-    if (streak >= 7) return { tier: "hot", color: "from-orange-500 to-red-500", flames: 3 };
-    if (streak >= 3) return { tier: "warm", color: "from-yellow-500 to-orange-500", flames: 2 };
-    return { tier: "starting", color: "from-yellow-400 to-yellow-600", flames: 1 };
+    if (streak >= 30) return { tier: "legendary", color: "from-accent via-primary to-destructive" };
+    if (streak >= 14) return { tier: "blazing", color: "from-primary via-destructive to-accent" };
+    if (streak >= 7) return { tier: "hot", color: "from-primary to-accent" };
+    if (streak >= 3) return { tier: "warm", color: "from-secondary to-primary" };
+    return { tier: "starting", color: "from-secondary to-accent" };
   };
 
-  const { tier, color, flames } = getStreakTier();
+  const { tier, color } = getStreakTier();
 
   return (
     <div className="relative flex-shrink-0">
-      {/* Main Streak Display - Compact and non-overlapping */}
+      {/* Main Streak Display - Clean and polished */}
       <div 
         className={cn(
-          "relative flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-md sm:rounded-lg transition-all duration-500",
-          "bg-gradient-to-r",
+          "relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-full transition-all duration-300",
+          "bg-gradient-to-r shadow-sm border border-primary-foreground/20",
           color,
-          isAnimating && "scale-105",
-          isAtRisk && showUrgency && "animate-pulse"
+          isAnimating && "scale-105 shadow-lg",
         )}
+        role="status"
+        aria-label={`${streak} day reading streak`}
       >
         {/* Flame Icon */}
         <Flame 
           className={cn(
-            "w-3.5 h-3.5 sm:w-4 sm:h-4 text-white drop-shadow-md",
+            "w-4 h-4 text-primary-foreground drop-shadow-sm",
             isAnimating && "animate-bounce",
           )}
+          aria-hidden="true"
         />
         
         {/* Streak Number */}
-        <span className="text-xs sm:text-sm font-bold text-white drop-shadow-sm leading-none">
+        <span className="text-sm font-bold text-primary-foreground drop-shadow-sm tabular-nums">
           {streak}
         </span>
 
-        {/* Sparkle for high streaks - desktop only */}
+        {/* Sparkle for high streaks */}
         {streak >= 7 && (
           <Zap className={cn(
-            "hidden sm:block w-3 h-3 text-yellow-300",
+            "w-3 h-3 text-primary-foreground/90 drop-shadow-sm",
             isAnimating && "animate-ping"
-          )} />
+          )} aria-hidden="true" />
         )}
       </div>
-
-      {/* Urgency Warning - Only on larger screens, positioned below */}
-      {isAtRisk && showUrgency && streak > 0 && (
-        <div className="hidden lg:block absolute top-full left-1/2 -translate-x-1/2 mt-2 w-max z-50">
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-destructive/90 text-destructive-foreground rounded-md text-[10px] font-medium shadow-lg whitespace-nowrap">
-            <AlertTriangle className="w-3 h-3" />
-            <span>{hoursLeft}h left!</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

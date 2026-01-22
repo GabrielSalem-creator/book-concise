@@ -369,7 +369,7 @@ const ReadBook = () => {
     }
   };
 
-  // Azure TTS Play Handler
+  // Azure TTS Play Handler with caching
   const handlePlay = async () => {
     if (!summary) {
       toast({
@@ -402,26 +402,80 @@ const ReadBook = () => {
     setIsGeneratingAudio(true);
 
     try {
-      console.log(`Generating Azure TTS with voice: ${selectedVoice}`);
+      let audioBase64: string | null = null;
       
-      const { data, error } = await supabase.functions.invoke('azure-tts', {
-        body: {
-          action: 'speak',
-          text: summary,
-          voiceName: selectedVoice,
+      // Check for cached audio in the summaries table
+      const { data: summaryData } = await supabase
+        .from('summaries')
+        .select('audio_url')
+        .eq('book_id', bookId)
+        .maybeSingle();
+      
+      // If we have cached audio for this voice, use it
+      if (summaryData?.audio_url) {
+        try {
+          const cached = JSON.parse(summaryData.audio_url);
+          if (cached[selectedVoice]) {
+            audioBase64 = cached[selectedVoice];
+            console.log('Using cached audio for voice:', selectedVoice);
+            toast({
+              title: "Loading saved audio",
+              description: "Using previously generated audio",
+            });
+          }
+        } catch {
+          // Not valid JSON, might be old format - ignore
         }
-      });
-
-      if (error) {
-        throw new Error(error.message);
       }
 
-      if (!data?.audio) {
-        throw new Error('No audio returned from Azure TTS');
+      // If no cached audio, generate new
+      if (!audioBase64) {
+        console.log(`Generating Azure TTS with voice: ${selectedVoice}`);
+        
+        const { data, error } = await supabase.functions.invoke('azure-tts', {
+          body: {
+            action: 'speak',
+            text: summary,
+            voiceName: selectedVoice,
+          }
+        });
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        if (!data?.audio) {
+          throw new Error('No audio returned from Azure TTS');
+        }
+
+        audioBase64 = data.audio;
+
+        // Cache the audio for future use
+        try {
+          let audioCache: Record<string, string> = {};
+          if (summaryData?.audio_url) {
+            try {
+              audioCache = JSON.parse(summaryData.audio_url);
+            } catch {
+              audioCache = {};
+            }
+          }
+          audioCache[selectedVoice] = audioBase64;
+          
+          await supabase
+            .from('summaries')
+            .update({ audio_url: JSON.stringify(audioCache) })
+            .eq('book_id', bookId);
+          
+          console.log('Cached audio for voice:', selectedVoice);
+        } catch (cacheError) {
+          console.error('Failed to cache audio:', cacheError);
+          // Continue playing even if caching fails
+        }
       }
 
       // Convert base64 to audio blob
-      const binaryString = atob(data.audio);
+      const binaryString = atob(audioBase64);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
@@ -688,7 +742,7 @@ const ReadBook = () => {
     });
   };
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (!book?.pdf_url) {
       toast({
         title: "No PDF available",
@@ -698,11 +752,43 @@ const ReadBook = () => {
       return;
     }
     
-    window.open(book.pdf_url, '_blank');
-    toast({
-      title: "Opening PDF",
-      description: "The PDF will open in a new tab",
-    });
+    try {
+      toast({
+        title: "Preparing download...",
+        description: "Fetching the PDF file",
+      });
+      
+      // Fetch the PDF as a blob to trigger a proper download
+      const response = await fetch(book.pdf_url);
+      if (!response.ok) throw new Error('Failed to fetch PDF');
+      
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      
+      // Create a temporary anchor element to trigger download with Save As dialog
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${book.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up the blob URL
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+      
+      toast({
+        title: "Download started",
+        description: "Your PDF is being downloaded",
+      });
+    } catch (error) {
+      console.error('Download failed:', error);
+      // Fallback: open in new tab if download fails
+      window.open(book.pdf_url, '_blank');
+      toast({
+        title: "Download fallback",
+        description: "Opening PDF in new tab instead",
+      });
+    }
   };
 
   const searchForPdf = async () => {
@@ -947,7 +1033,7 @@ const ReadBook = () => {
                     <Button
                       size="lg"
                       onClick={handleBookCompletion}
-                      className="gap-3 h-14 px-8 rounded-full bg-green-600 hover:bg-green-500 text-white shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all"
+                      className="gap-3 h-14 px-8 rounded-full bg-gradient-to-r from-secondary to-accent hover:opacity-90 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all"
                       aria-label="Complete book"
                     >
                       <CheckCircle className="w-6 h-6" />

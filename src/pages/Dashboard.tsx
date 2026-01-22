@@ -16,7 +16,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
 import { StreakDisplay } from "@/components/StreakDisplay";
-import { DailyRewardBanner } from "@/components/DailyRewardBanner";
 import { ExitIntentPopup } from "@/components/ExitIntentPopup";
 import { WelcomeBackModal } from "@/components/WelcomeBackModal";
 import { useStreakMilestoneToast } from "@/components/StreakMilestoneToast";
@@ -445,13 +444,6 @@ const Dashboard = () => {
       {/* Main Content */}
       <main id="main-content" className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8" role="main">
         <div className="space-y-6 sm:space-y-8 lg:space-y-10">
-          {/* Daily Reward Banner - Urgency */}
-          {!hasReadToday && readingStreak > 0 && (
-            <DailyRewardBanner 
-              streak={readingStreak} 
-              hasReadToday={hasReadToday} 
-            />
-          )}
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
             {/* Left Column */}
