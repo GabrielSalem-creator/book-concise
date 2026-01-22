@@ -369,7 +369,22 @@ const ReadBook = () => {
     }
   };
 
-  // Azure TTS Play Handler with caching
+  // Unlock audio for iOS - must be called on user interaction
+  const unlockAudioForIOS = () => {
+    // Create a silent audio context to unlock audio on iOS
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContext) {
+      const ctx = new AudioContext();
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+      ctx.resume();
+    }
+  };
+
+  // Azure TTS Play Handler with caching and iOS compatibility
   const handlePlay = async () => {
     if (!summary) {
       toast({
@@ -380,13 +395,22 @@ const ReadBook = () => {
       return;
     }
 
+    // Unlock audio for iOS on first interaction
+    unlockAudioForIOS();
+
     await createOrUpdateSession();
 
     // If paused, resume
     if (isPaused && audioRef.current) {
-      audioRef.current.play();
-      setIsPaused(false);
-      setIsReading(true);
+      try {
+        await audioRef.current.play();
+        setIsPaused(false);
+        setIsReading(true);
+      } catch (e) {
+        console.error('Resume failed:', e);
+        // Reset and try fresh
+        setIsPaused(false);
+      }
       return;
     }
 
@@ -418,10 +442,6 @@ const ReadBook = () => {
           if (cached[selectedVoice]) {
             audioBase64 = cached[selectedVoice];
             console.log('Using cached audio for voice:', selectedVoice);
-            toast({
-              title: "Loading saved audio",
-              description: "Using previously generated audio",
-            });
           }
         } catch {
           // Not valid JSON, might be old format - ignore
@@ -431,6 +451,11 @@ const ReadBook = () => {
       // If no cached audio, generate new
       if (!audioBase64) {
         console.log(`Generating Azure TTS with voice: ${selectedVoice}`);
+        
+        toast({
+          title: "Generating audio...",
+          description: "This may take a few seconds",
+        });
         
         const { data, error } = await supabase.functions.invoke('azure-tts', {
           body: {
@@ -450,28 +475,36 @@ const ReadBook = () => {
 
         audioBase64 = data.audio;
 
-        // Cache the audio for future use
-        try {
-          let audioCache: Record<string, string> = {};
-          if (summaryData?.audio_url) {
-            try {
-              audioCache = JSON.parse(summaryData.audio_url);
-            } catch {
-              audioCache = {};
+        // Cache the audio for future use (in background, fire and forget)
+        const cacheAudio = async () => {
+          try {
+            const { data: currentData } = await supabase
+              .from('summaries')
+              .select('audio_url')
+              .eq('book_id', bookId)
+              .maybeSingle();
+            
+            let audioCache: Record<string, string> = {};
+            if (currentData?.audio_url) {
+              try {
+                audioCache = JSON.parse(currentData.audio_url);
+              } catch {
+                audioCache = {};
+              }
             }
+            audioCache[selectedVoice] = audioBase64!;
+            
+            await supabase
+              .from('summaries')
+              .update({ audio_url: JSON.stringify(audioCache) })
+              .eq('book_id', bookId);
+            
+            console.log('Cached audio for voice:', selectedVoice);
+          } catch (err) {
+            console.error('Cache failed:', err);
           }
-          audioCache[selectedVoice] = audioBase64;
-          
-          await supabase
-            .from('summaries')
-            .update({ audio_url: JSON.stringify(audioCache) })
-            .eq('book_id', bookId);
-          
-          console.log('Cached audio for voice:', selectedVoice);
-        } catch (cacheError) {
-          console.error('Failed to cache audio:', cacheError);
-          // Continue playing even if caching fails
-        }
+        };
+        cacheAudio();
       }
 
       // Convert base64 to audio blob
@@ -484,9 +517,29 @@ const ReadBook = () => {
       const audioUrl = URL.createObjectURL(audioBlob);
       currentAudioUrlRef.current = audioUrl;
 
-      // Create and play audio
-      const audio = new Audio(audioUrl);
+      // Create audio element
+      const audio = new Audio();
       audioRef.current = audio;
+      
+      // Set up event listeners before setting src (important for iOS)
+      audio.addEventListener('canplaythrough', async () => {
+        try {
+          await audio.play();
+          setIsReading(true);
+          setIsGeneratingAudio(false);
+          toast({
+            title: "Now Playing",
+            description: `${selectedVoice.split('-').slice(2).join(' ').replace('Neural', '')} voice`,
+          });
+        } catch (playError: any) {
+          console.error('Play failed:', playError);
+          setIsGeneratingAudio(false);
+          toast({
+            title: "Tap to Play",
+            description: "Tap the play button again to start audio",
+          });
+        }
+      }, { once: true });
 
       audio.addEventListener('timeupdate', () => {
         if (audio.duration > 0) {
@@ -520,19 +573,14 @@ const ReadBook = () => {
         setIsGeneratingAudio(false);
         toast({
           title: "Playback Error",
-          description: "Could not play the audio",
+          description: "Tap play to try again",
           variant: "destructive",
         });
       });
 
-      await audio.play();
-      setIsReading(true);
-      setIsGeneratingAudio(false);
-      
-      toast({
-        title: "Now Playing",
-        description: `Reading with ${selectedVoice.split('-').slice(2).join(' ').replace('Neural', '')} voice`,
-      });
+      // Set the source - this triggers loading
+      audio.src = audioUrl;
+      audio.load();
 
     } catch (error: any) {
       console.error('Azure TTS failed:', error);
