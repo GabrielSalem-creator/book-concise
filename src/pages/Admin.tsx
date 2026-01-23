@@ -44,6 +44,8 @@ const Admin = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
+      {/* Top spacing */}
+      <div className="h-5 bg-background" />
       {/* Header */}
       <header className="sticky top-0 z-50 glass-morphism border-b border-primary/20">
         <div className="container mx-auto px-3 sm:px-4 lg:px-6">
