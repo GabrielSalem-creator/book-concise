@@ -159,6 +159,9 @@ const Chat = () => {
         Skip to chat
       </a>
 
+      {/* Top spacing */}
+      <div className="h-5 bg-background" />
+
       {/* Header */}
       <header className="sticky top-0 z-50 glass-morphism border-b border-primary/20" role="banner">
         <div className="container mx-auto px-3 sm:px-4 lg:px-6">

@@ -125,6 +125,8 @@ const Explore = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5">
+      {/* Top spacing */}
+      <div className="h-5 bg-background" />
       {/* Header */}
       <div className="border-b border-border/50 backdrop-blur-sm bg-background/50 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3 md:py-4 flex items-center justify-between">
