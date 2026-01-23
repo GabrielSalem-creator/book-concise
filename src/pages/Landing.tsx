@@ -24,9 +24,10 @@ const Landing = () => {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-secondary/10 rounded-full blur-3xl" />
       </div>
 
-      {/* Header */}
+      {/* Header with top spacing */}
+      <div className="h-5 bg-background relative z-10" />
       <header className="relative z-10 border-b border-border/30 backdrop-blur-xl bg-background/50">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="container mx-auto px-6 py-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Moon className="w-8 h-8 text-primary" />
             <span className="text-2xl font-bold tracking-tight">Nocturn</span>
@@ -35,13 +36,13 @@ const Landing = () => {
             <ThemeToggle />
             <Button 
               variant="ghost" 
-              onClick={() => navigate("/auth")}
+              onClick={() => window.open("/auth", "_blank")}
               className="hidden sm:inline-flex"
             >
               Sign In
             </Button>
             <Button 
-              onClick={() => navigate("/auth")}
+              onClick={() => window.open("/auth", "_blank")}
               className="bg-primary hover:bg-primary/90"
             >
               Get Started
