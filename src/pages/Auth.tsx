@@ -152,7 +152,7 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     try {
       setIsLoading(true);
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
@@ -160,11 +160,22 @@ const Auth = () => {
             access_type: 'offline',
             prompt: 'consent',
           },
+          // Skip the default browser redirect - open in new tab for WebView compatibility
+          skipBrowserRedirect: true,
         }
       });
 
       if (error) throw error;
-      // OAuth will redirect to Google, then back to /auth/callback
+
+      // Open in new browser tab for WebView compatibility (bypasses Google's WebView restriction)
+      if (data?.url) {
+        window.open(data.url, '_blank');
+        setIsLoading(false);
+        toast({
+          title: "Sign in opened",
+          description: "Complete sign in in the new tab, then return here.",
+        });
+      }
     } catch (error) {
       console.error("Google sign in error:", error);
       toast({
