@@ -60,7 +60,7 @@ export const PaymentInstructionsModal = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md max-h-[90vh] overflow-y-auto mx-4 p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-primary" />
@@ -71,24 +71,25 @@ export const PaymentInstructionsModal = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {/* Reference Code - Most Important */}
-          <Card className="p-4 bg-amber-500/10 border-amber-500/30">
+          <Card className="p-3 sm:p-4 bg-amber-500/10 border-amber-500/30">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+              <span className="text-xs sm:text-sm font-medium text-amber-700 dark:text-amber-400">
                 Reference Code (IMPORTANT!)
               </span>
-              <Badge variant="outline" className="bg-amber-500 text-white border-0">
+              <Badge variant="outline" className="bg-amber-500 text-white border-0 text-xs">
                 Required
               </Badge>
             </div>
-            <div className="flex items-center justify-between bg-background rounded-lg p-3">
-              <code className="text-xl font-bold tracking-wider">
+            <div className="flex items-center justify-between bg-background rounded-lg p-2 sm:p-3">
+              <code className="text-base sm:text-xl font-bold tracking-wider break-all">
                 {paymentDetails.referenceCode}
               </code>
               <Button
                 size="sm"
                 variant="ghost"
+                className="shrink-0 ml-2"
                 onClick={() => copyToClipboard(paymentDetails.referenceCode, 'Reference Code')}
               >
                 {copiedField === 'Reference Code' ? (
@@ -104,19 +105,20 @@ export const PaymentInstructionsModal = ({
           </Card>
 
           {/* Bank Details */}
-          <div className="space-y-2">
+          <div className="space-y-1.5 sm:space-y-2">
             {details.map((detail) => (
               <div
                 key={detail.key}
-                className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                className="flex items-center justify-between p-2 sm:p-3 rounded-lg bg-muted/50"
               >
-                <div>
+                <div className="min-w-0 flex-1 mr-2">
                   <p className="text-xs text-muted-foreground">{detail.label}</p>
-                  <p className="font-medium">{detail.value}</p>
+                  <p className="font-medium text-sm sm:text-base break-all">{detail.value}</p>
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
+                  className="shrink-0"
                   onClick={() => copyToClipboard(detail.value, detail.label)}
                 >
                   {copiedField === detail.label ? (
@@ -130,14 +132,14 @@ export const PaymentInstructionsModal = ({
           </div>
 
           {/* Instructions */}
-          <Card className="p-4 bg-blue-500/10 border-blue-500/30">
+          <Card className="p-3 sm:p-4 bg-blue-500/10 border-blue-500/30">
             <div className="flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-blue-500 mt-0.5" />
-              <div className="text-sm">
+              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 mt-0.5 shrink-0" />
+              <div className="text-xs sm:text-sm">
                 <p className="font-medium text-blue-700 dark:text-blue-400 mb-1">
                   How to complete payment:
                 </p>
-                <ol className="list-decimal list-inside text-blue-600 dark:text-blue-300 space-y-1">
+                <ol className="list-decimal list-inside text-blue-600 dark:text-blue-300 space-y-0.5 sm:space-y-1">
                   <li>Open your banking app</li>
                   <li>Add a new transfer with the IBAN above</li>
                   <li>Enter the exact amount shown</li>
