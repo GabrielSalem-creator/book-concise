@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Search, Loader2, BookOpen, Sparkles } from "lucide-react";
+import { Search, Loader2, BookOpen, Sparkles, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -30,23 +31,34 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
   const [status, setStatus] = useState("");
   const [progressValue, setProgressValue] = useState(0);
   const [credits, setCredits] = useState<number | null>(null);
+  const [isPremium, setIsPremium] = useState(false);
   const [showNoCreditsPopup, setShowNoCreditsPopup] = useState(false);
   const [daysUntilReset, setDaysUntilReset] = useState(7);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Fetch user credits
+  // Fetch user credits and premium status
   const fetchCredits = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     const { data: preferences } = await supabase
       .from('user_preferences')
-      .select('daily_credits, last_credit_reset')
+      .select('daily_credits, last_credit_reset, is_premium, premium_expires_at')
       .eq('user_id', user.id)
       .maybeSingle();
 
     if (preferences) {
+      // Check premium status
+      if (preferences.is_premium) {
+        const expiresAt = preferences.premium_expires_at ? new Date(preferences.premium_expires_at) : null;
+        if (!expiresAt || expiresAt > new Date()) {
+          setIsPremium(true);
+          setCredits(null); // Premium users don't need credits display
+          return;
+        }
+      }
+
       const today = new Date();
       const lastReset = new Date(preferences.last_credit_reset);
       const daysSinceReset = Math.floor((today.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24));
@@ -286,12 +298,17 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
           className="flex-1 h-10 text-sm border-primary/20 bg-background/50"
           aria-describedby={status ? "search-status-compact" : undefined}
         />
-        {credits !== null && (
+        {isPremium ? (
+          <Badge className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-amber-500 text-white" role="status">
+            <Crown className="w-3 h-3" aria-hidden="true" />
+            <span className="font-semibold text-xs">Premium</span>
+          </Badge>
+        ) : credits !== null ? (
           <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary/10 text-xs" role="status" aria-label={`${credits} credits remaining`}>
             <Sparkles className="w-3 h-3 text-primary" aria-hidden="true" />
             <span className="font-semibold text-primary">{credits}</span>
           </div>
-        )}
+        ) : null}
         <Button
           onClick={handleSearch}
           disabled={isLoading}
@@ -330,12 +347,17 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
               Search for a Book
             </h2>
           </div>
-          {credits !== null && (
+          {isPremium ? (
+            <Badge className="flex items-center gap-1.5 bg-amber-500 text-white px-3 py-1" role="status">
+              <Crown className="w-4 h-4" aria-hidden="true" />
+              <span className="font-semibold">Premium - Unlimited</span>
+            </Badge>
+          ) : credits !== null ? (
             <div className="flex items-center gap-1.5 bg-primary/10 px-2 py-1 rounded-full" role="status" aria-label={`${credits} credits remaining`}>
               <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 text-primary" aria-hidden="true" />
               <span className="text-xs sm:text-sm font-semibold text-primary">{credits} credits</span>
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">

@@ -26,3 +26,9 @@ verify_jwt = false
 
 [functions.update-user-credits]
 verify_jwt = false
+
+[functions.create-subscription-request]
+verify_jwt = false
+
+[functions.approve-subscription]
+verify_jwt = false

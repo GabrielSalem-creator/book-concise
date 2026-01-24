@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Shield, Users, Book, Activity, ArrowLeft, 
-  RefreshCw, CreditCard, BarChart3, Bot
+  RefreshCw, CreditCard, BarChart3, Bot, Crown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,6 +14,7 @@ import { AdminAnalytics } from '@/components/admin/AdminAnalytics';
 import { AdminActivityFeed } from '@/components/admin/AdminActivityFeed';
 import { AdminCommands } from '@/components/admin/AdminCommands';
 import { AdminAIChat } from '@/components/admin/AdminAIChat';
+import { AdminSubscriptions } from '@/components/admin/AdminSubscriptions';
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -76,13 +77,20 @@ const Admin = () => {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
           {/* Scrollable tabs for mobile */}
           <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 pb-2">
-            <TabsList className="inline-flex w-max sm:w-full sm:grid sm:grid-cols-6 gap-1 bg-muted/50 p-1 rounded-xl">
+            <TabsList className="inline-flex w-max sm:w-full sm:grid sm:grid-cols-7 gap-1 bg-muted/50 p-1 rounded-xl">
               <TabsTrigger 
                 value="overview" 
                 className="gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg transition-all"
               >
                 <BarChart3 className="w-4 h-4 shrink-0" />
                 <span className="text-xs sm:text-sm whitespace-nowrap">Overview</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="subscriptions" 
+                className="gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg transition-all"
+              >
+                <Crown className="w-4 h-4 shrink-0" />
+                <span className="text-xs sm:text-sm whitespace-nowrap">Subscriptions</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="users" 
@@ -124,6 +132,10 @@ const Admin = () => {
 
           <TabsContent value="overview" className="space-y-6">
             <AdminAnalytics />
+          </TabsContent>
+
+          <TabsContent value="subscriptions" className="space-y-6">
+            <AdminSubscriptions />
           </TabsContent>
 
           <TabsContent value="users" className="space-y-6">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Moon, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu, Search, Shield } from "lucide-react";
+import { Moon, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu, Search, Shield, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BookSearch } from "@/components/BookSearch";
 import { SummaryDisplay } from "@/components/SummaryDisplay";
@@ -323,6 +323,15 @@ const Dashboard = () => {
             {/* Desktop Navigation */}
             <nav className="hidden lg:flex items-center gap-1" aria-label="Main navigation">
               <NavLinks />
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => navigate('/pricing')} 
+                className="text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+              >
+                <Crown className="w-4 h-4 mr-2" />
+                Upgrade
+              </Button>
               {isAdmin && (
                 <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="text-primary">
                   <Shield className="w-4 h-4 mr-2" />
@@ -390,6 +399,14 @@ const Dashboard = () => {
                       )}
                     </div>
                     <NavLinks />
+                    <Button 
+                      variant="outline" 
+                      onClick={() => navigate('/pricing')} 
+                      className="w-full justify-start border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+                    >
+                      <Crown className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Upgrade to Premium
+                    </Button>
                     {isAdmin && (
                       <Button 
                         variant="default" 

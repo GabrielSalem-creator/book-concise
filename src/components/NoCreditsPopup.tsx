@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -6,7 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Clock, Sparkles, Calendar } from "lucide-react";
+import { Clock, Sparkles, Calendar, Crown } from "lucide-react";
 
 interface NoCreditsPopupProps {
   open: boolean;
@@ -15,6 +16,13 @@ interface NoCreditsPopupProps {
 }
 
 export const NoCreditsPopup = ({ open, onClose, daysUntilReset = 7 }: NoCreditsPopupProps) => {
+  const navigate = useNavigate();
+
+  const handleUpgrade = () => {
+    onClose();
+    navigate('/pricing');
+  };
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
@@ -39,13 +47,32 @@ export const NoCreditsPopup = ({ open, onClose, daysUntilReset = 7 }: NoCreditsP
               </span>
             </div>
 
+            {/* Upgrade CTA */}
+            <div className="p-4 rounded-lg bg-gradient-to-r from-amber-500/10 to-amber-600/10 border border-amber-500/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Crown className="w-5 h-5 text-amber-500" />
+                <span className="font-semibold text-amber-700 dark:text-amber-400">Go Premium</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Get <span className="font-semibold text-amber-600 dark:text-amber-400">unlimited summaries</span>, 
+                premium TTS voices, and all languages for just $9.99/month.
+              </p>
+              <Button 
+                onClick={handleUpgrade}
+                className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                <Crown className="w-4 h-4 mr-2" />
+                Upgrade to Premium
+              </Button>
+            </div>
+
             <div className="flex items-start gap-3 p-4 rounded-lg bg-primary/5 border border-primary/20 text-left">
               <Calendar className="w-5 h-5 text-primary mt-0.5" />
               <div>
-                <p className="font-medium text-foreground">Weekly Credit System</p>
+                <p className="font-medium text-foreground">Free Plan</p>
                 <p className="text-sm text-muted-foreground">
-                  You receive <span className="font-semibold text-primary">3 free credits</span> every week 
-                  to generate new book summaries. Reading existing summaries is always free!
+                  You receive <span className="font-semibold text-primary">3 free credits</span> every week. 
+                  Reading existing summaries is always free!
                 </p>
               </div>
             </div>
@@ -53,8 +80,8 @@ export const NoCreditsPopup = ({ open, onClose, daysUntilReset = 7 }: NoCreditsP
         </DialogHeader>
         
         <div className="flex justify-center pt-2">
-          <Button onClick={onClose} className="px-8">
-            Got it
+          <Button variant="outline" onClick={onClose} className="px-8">
+            Maybe Later
           </Button>
         </div>
       </DialogContent>

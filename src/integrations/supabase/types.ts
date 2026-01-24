@@ -342,6 +342,51 @@ export type Database = {
           },
         ]
       }
+      subscription_requests: {
+        Row: {
+          amount: number
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          currency: string
+          expires_at: string | null
+          id: string
+          plan_type: string
+          reference_code: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          currency?: string
+          expires_at?: string | null
+          id?: string
+          plan_type?: string
+          reference_code: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          currency?: string
+          expires_at?: string | null
+          id?: string
+          plan_type?: string
+          reference_code?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       summaries: {
         Row: {
           audio_url: string | null
@@ -416,7 +461,9 @@ export type Database = {
           created_at: string
           daily_credits: number | null
           id: string
+          is_premium: boolean | null
           last_credit_reset: string | null
+          premium_expires_at: string | null
           themes: string[]
           updated_at: string
           user_id: string
@@ -426,7 +473,9 @@ export type Database = {
           created_at?: string
           daily_credits?: number | null
           id?: string
+          is_premium?: boolean | null
           last_credit_reset?: string | null
+          premium_expires_at?: string | null
           themes?: string[]
           updated_at?: string
           user_id: string
@@ -436,7 +485,9 @@ export type Database = {
           created_at?: string
           daily_credits?: number | null
           id?: string
+          is_premium?: boolean | null
           last_credit_reset?: string | null
+          premium_expires_at?: string | null
           themes?: string[]
           updated_at?: string
           user_id?: string
