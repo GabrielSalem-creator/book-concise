@@ -84,6 +84,7 @@ serve(async (req) => {
 
     // Check if user is an admin (unlimited credits)
     let isAdmin = false;
+    let isPremium = false;
     if (userId) {
       const { data: adminCheck } = await supabase.rpc('has_role', {
         _user_id: userId,
@@ -93,10 +94,32 @@ serve(async (req) => {
       if (isAdmin) {
         console.log('[generate-summary] User is admin - unlimited credits');
       }
+
+      // Check if user has premium subscription
+      const { data: prefs } = await supabase
+        .from('user_preferences')
+        .select('is_premium, premium_expires_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      if (prefs?.is_premium) {
+        const expiresAt = prefs.premium_expires_at ? new Date(prefs.premium_expires_at) : null;
+        if (!expiresAt || expiresAt > new Date()) {
+          isPremium = true;
+          console.log('[generate-summary] User is premium - unlimited credits');
+        } else {
+          // Premium expired, reset the flag
+          await supabase
+            .from('user_preferences')
+            .update({ is_premium: false })
+            .eq('user_id', userId);
+          console.log('[generate-summary] Premium expired, reset to free');
+        }
+      }
     }
 
-    // NOW check user credits - only for NEW summary generation (skip for admins)
-    if (userId && !targetLanguage && !isAdmin) {
+    // NOW check user credits - only for NEW summary generation (skip for admins and premium)
+    if (userId && !targetLanguage && !isAdmin && !isPremium) {
       const { data: preferences, error: prefsError } = await supabase
         .from('user_preferences')
         .select('daily_credits, last_credit_reset')
@@ -365,8 +388,8 @@ Make it so detailed and specific that someone reading this summary will remember
 
     console.log(`[generate-summary] Summary generated in ${generationTime}s, Language: ${outputLanguage}, TTS: ${ttsLanguage}`);
 
-    // Deduct a credit from the user (only for new summaries, not translations)
-    if (userId && !targetLanguage) {
+    // Deduct a credit from the user (only for new summaries, not translations, not premium/admin)
+    if (userId && !targetLanguage && !isAdmin && !isPremium) {
       const { data: currentPrefs } = await supabase
         .from('user_preferences')
         .select('daily_credits')
@@ -385,6 +408,8 @@ Make it so detailed and specific that someone reading this summary will remember
           console.log('[generate-summary] Credit deducted from user');
         }
       }
+    } else if (isPremium || isAdmin) {
+      console.log('[generate-summary] Premium/Admin user - no credits deducted');
     }
 
     // Save summary to database (only for new summaries, not translations)
@@ -409,6 +434,7 @@ Make it so detailed and specific that someone reading this summary will remember
 
     // Get updated credits
     let creditsRemaining = null;
+    let userIsPremium = isPremium || isAdmin;
     if (userId) {
       const { data: updatedPrefs } = await supabase
         .from('user_preferences')
@@ -426,6 +452,7 @@ Make it so detailed and specific that someone reading this summary will remember
         summaryId,
         generationTime,
         creditsRemaining,
+        isPremium: userIsPremium,
         detectedLanguage: outputLanguage,
         detectedGenre,
         detectedTone,
