@@ -323,6 +323,7 @@ const Dashboard = () => {
             {/* Desktop Navigation */}
             <nav className="hidden lg:flex items-center gap-1" aria-label="Main navigation">
               <NavLinks />
+{/* Premium upgrade button - temporarily hidden
               <Button 
                 variant="ghost" 
                 size="sm" 
@@ -332,6 +333,7 @@ const Dashboard = () => {
                 <Crown className="w-4 h-4 mr-2" />
                 Upgrade
               </Button>
+*/}
               {isAdmin && (
                 <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="text-primary">
                   <Shield className="w-4 h-4 mr-2" />
@@ -399,6 +401,7 @@ const Dashboard = () => {
                       )}
                     </div>
                     <NavLinks />
+{/* Premium upgrade button - temporarily hidden
                     <Button 
                       variant="outline" 
                       onClick={() => navigate('/pricing')} 
@@ -407,6 +410,7 @@ const Dashboard = () => {
                       <Crown className="w-4 h-4 mr-2" aria-hidden="true" />
                       Upgrade to Premium
                     </Button>
+*/}
                     {isAdmin && (
                       <Button 
                         variant="default" 
