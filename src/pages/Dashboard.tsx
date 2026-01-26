@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Moon, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu, Search, Shield, Crown } from "lucide-react";
+import { Moon, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu, Search, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BookSearch } from "@/components/BookSearch";
 import { SummaryDisplay } from "@/components/SummaryDisplay";
@@ -20,7 +20,11 @@ import { ExitIntentPopup } from "@/components/ExitIntentPopup";
 import { WelcomeBackModal } from "@/components/WelcomeBackModal";
 import { useStreakMilestoneToast } from "@/components/StreakMilestoneToast";
 import { FeedbackPopup } from "@/components/FeedbackPopup";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card } from "@/components/ui/card";
+
 const Dashboard = () => {
+  const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState<string>("");
   const [bookTitle, setBookTitle] = useState<string>("");
   const [booksRead, setBooksRead] = useState(0);
@@ -79,117 +83,123 @@ const Dashboard = () => {
   const loadDashboardData = async () => {
     if (!user) return;
 
-    // Load books read count
-    const { count: completedCount } = await supabase
-      .from('reading_sessions')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .not('completed_at', 'is', null);
+    setIsLoading(true);
     
-    setBooksRead(completedCount || 0);
-
-    // Load current reading session
-    const { data: currentSession } = await supabase
-      .from('reading_sessions')
-      .select('*, books(*)')
-      .eq('user_id', user.id)
-      .is('completed_at', null)
-      .order('last_read_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (currentSession) {
-      setCurrentBook({
-        id: currentSession.books.id,
-        title: currentSession.books.title,
-        author: currentSession.books.author,
-      });
-      setCurrentProgress(currentSession.progress_percentage || 0);
-    }
-
-    // Load active goal and reading plan
-    const { data: goal } = await supabase
-      .from('goals')
-      .select('*, reading_plan_books(*, books(*))')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (goal) {
-      setActiveGoal(goal);
-      setReadingPlanBooks(
-        goal.reading_plan_books.map((rpb: any) => ({
-          id: rpb.books.id,
-          title: rpb.books.title,
-          author: rpb.books.author,
-          status: rpb.status,
-          orderIndex: rpb.order_index,
-        })).sort((a: any, b: any) => a.orderIndex - b.orderIndex)
-      );
-    }
-
-    // Calculate reading streak - consecutive days
-    const { data: allSessions } = await supabase
-      .from('reading_sessions')
-      .select('last_read_at')
-      .eq('user_id', user.id)
-      .order('last_read_at', { ascending: false });
-
-    if (allSessions && allSessions.length > 0) {
-      // Get unique days
-      const uniqueDays = [...new Set(
-        allSessions.map(s => new Date(s.last_read_at).toDateString())
-      )].map(d => new Date(d)).sort((a, b) => b.getTime() - a.getTime());
-
-      // Check if user read today
-      const today = new Date().toDateString();
-      const readToday = uniqueDays.some(d => d.toDateString() === today);
-      setHasReadToday(readToday);
+    try {
+      // Load books read count
+      const { count: completedCount } = await supabase
+        .from('reading_sessions')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .not('completed_at', 'is', null);
       
-      // Set last read date
-      if (uniqueDays.length > 0) {
-        setLastReadDate(uniqueDays[0]);
+      setBooksRead(completedCount || 0);
+
+      // Load current reading session
+      const { data: currentSession } = await supabase
+        .from('reading_sessions')
+        .select('*, books(*)')
+        .eq('user_id', user.id)
+        .is('completed_at', null)
+        .order('last_read_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (currentSession) {
+        setCurrentBook({
+          id: currentSession.books.id,
+          title: currentSession.books.title,
+          author: currentSession.books.author,
+        });
+        setCurrentProgress(currentSession.progress_percentage || 0);
       }
 
-      // Calculate consecutive streak
-      let streak = 0;
-      const todayDate = new Date();
-      todayDate.setHours(0, 0, 0, 0);
-      
-      for (let i = 0; i < uniqueDays.length; i++) {
-        const checkDate = new Date(todayDate);
-        checkDate.setDate(checkDate.getDate() - i);
+      // Load active goal and reading plan
+      const { data: goal } = await supabase
+        .from('goals')
+        .select('*, reading_plan_books(*, books(*))')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (goal) {
+        setActiveGoal(goal);
+        setReadingPlanBooks(
+          goal.reading_plan_books.map((rpb: any) => ({
+            id: rpb.books.id,
+            title: rpb.books.title,
+            author: rpb.books.author,
+            status: rpb.status,
+            orderIndex: rpb.order_index,
+          })).sort((a: any, b: any) => a.orderIndex - b.orderIndex)
+        );
+      }
+
+      // Calculate reading streak - consecutive days
+      const { data: allSessions } = await supabase
+        .from('reading_sessions')
+        .select('last_read_at')
+        .eq('user_id', user.id)
+        .order('last_read_at', { ascending: false });
+
+      if (allSessions && allSessions.length > 0) {
+        // Get unique days
+        const uniqueDays = [...new Set(
+          allSessions.map(s => new Date(s.last_read_at).toDateString())
+        )].map(d => new Date(d)).sort((a, b) => b.getTime() - a.getTime());
+
+        // Check if user read today
+        const today = new Date().toDateString();
+        const readToday = uniqueDays.some(d => d.toDateString() === today);
+        setHasReadToday(readToday);
         
-        if (uniqueDays.some(d => d.toDateString() === checkDate.toDateString())) {
-          streak++;
-        } else if (i === 0 && !readToday) {
-          // If user hasn't read today, start checking from yesterday
-          continue;
-        } else {
-          break;
+        // Set last read date
+        if (uniqueDays.length > 0) {
+          setLastReadDate(uniqueDays[0]);
+        }
+
+        // Calculate consecutive streak
+        let streak = 0;
+        const todayDate = new Date();
+        todayDate.setHours(0, 0, 0, 0);
+        
+        for (let i = 0; i < uniqueDays.length; i++) {
+          const checkDate = new Date(todayDate);
+          checkDate.setDate(checkDate.getDate() - i);
+          
+          if (uniqueDays.some(d => d.toDateString() === checkDate.toDateString())) {
+            streak++;
+          } else if (i === 0 && !readToday) {
+            // If user hasn't read today, start checking from yesterday
+            continue;
+          } else {
+            break;
+          }
+        }
+        
+        previousStreak.current = readingStreak;
+        setReadingStreak(streak);
+        
+        // Check for milestone toast
+        if (streak > previousStreak.current) {
+          checkAndShowMilestone(streak);
         }
       }
-      
-      previousStreak.current = readingStreak;
-      setReadingStreak(streak);
-      
-      // Check for milestone toast
-      if (streak > previousStreak.current) {
-        checkAndShowMilestone(streak);
-      }
-    }
 
-    // Get user name for personalized messaging
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('full_name, username')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    
-    if (profile) {
-      setUserName(profile.full_name || profile.username || undefined);
+      // Get user name for personalized messaging
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, username')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (profile) {
+        setUserName(profile.full_name || profile.username || undefined);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -475,15 +485,37 @@ const Dashboard = () => {
               <h2 id="currently-reading-heading" className="text-lg sm:text-xl lg:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 Currently Reading
               </h2>
-              <CurrentReading
-                bookId={currentBook?.id}
-                bookTitle={currentBook?.title}
-                bookAuthor={currentBook?.author}
-                progress={currentProgress}
-                isPaused={false}
-                onResume={handleResumeReading}
-                onPause={handlePauseReading}
-              />
+              {isLoading ? (
+                <Card className="overflow-hidden glass-morphism border-primary/20">
+                  <div className="p-4 sm:p-6">
+                    <div className="flex items-start gap-3 sm:gap-4">
+                      <Skeleton className="w-12 h-16 sm:w-16 sm:h-20 rounded-lg shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-5 w-3/4" />
+                        <Skeleton className="h-4 w-1/2" />
+                        <div className="mt-4 space-y-2">
+                          <div className="flex justify-between">
+                            <Skeleton className="h-3 w-16" />
+                            <Skeleton className="h-3 w-10" />
+                          </div>
+                          <Skeleton className="h-2 w-full rounded-full" />
+                        </div>
+                      </div>
+                    </div>
+                    <Skeleton className="mt-4 sm:mt-6 h-10 w-full rounded-md" />
+                  </div>
+                </Card>
+              ) : (
+                <CurrentReading
+                  bookId={currentBook?.id}
+                  bookTitle={currentBook?.title}
+                  bookAuthor={currentBook?.author}
+                  progress={currentProgress}
+                  isPaused={false}
+                  onResume={handleResumeReading}
+                  onPause={handlePauseReading}
+                />
+              )}
             </section>
 
             {/* Right Column */}
@@ -491,12 +523,39 @@ const Dashboard = () => {
               <h2 id="reading-plan-heading" className="text-lg sm:text-xl lg:text-2xl font-bold bg-gradient-to-r from-accent to-secondary bg-clip-text text-transparent">
                 Reading Plan
               </h2>
-              <ReadingPlan
-                goalId={activeGoal?.id}
-                goalTitle={activeGoal?.title}
-                books={readingPlanBooks}
-                onDeletePlan={handleDeletePlan}
-              />
+              {isLoading ? (
+                <Card className="overflow-hidden glass-morphism border-primary/20">
+                  <div className="p-4 sm:p-6 border-b border-primary/20 bg-gradient-to-r from-primary/10 to-accent/10">
+                    <div className="flex items-start justify-between gap-2 mb-3 sm:mb-4">
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-6 w-2/3" />
+                        <Skeleton className="h-4 w-1/3" />
+                      </div>
+                      <Skeleton className="h-6 w-12 rounded-full" />
+                    </div>
+                    <Skeleton className="h-3 w-full rounded-full" />
+                  </div>
+                  <div className="p-3 sm:p-4 lg:p-6 space-y-2 sm:space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl bg-muted/20">
+                        <Skeleton className="w-8 h-8 sm:w-10 sm:h-10 rounded-full shrink-0" />
+                        <div className="flex-1 space-y-1.5">
+                          <Skeleton className="h-4 w-3/4" />
+                          <Skeleton className="h-3 w-1/2" />
+                        </div>
+                        <Skeleton className="h-5 w-16 rounded-full" />
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ) : (
+                <ReadingPlan
+                  goalId={activeGoal?.id}
+                  goalTitle={activeGoal?.title}
+                  books={readingPlanBooks}
+                  onDeletePlan={handleDeletePlan}
+                />
+              )}
             </section>
           </div>
 
