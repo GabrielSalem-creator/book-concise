@@ -47,7 +47,7 @@ export const NoCreditsPopup = ({ open, onClose, daysUntilReset = 7 }: NoCreditsP
               </span>
             </div>
 
-            {/* Upgrade CTA */}
+{/* Premium upgrade CTA - temporarily hidden
             <div className="p-4 rounded-lg bg-gradient-to-r from-amber-500/10 to-amber-600/10 border border-amber-500/30">
               <div className="flex items-center gap-2 mb-2">
                 <Crown className="w-5 h-5 text-amber-500" />
@@ -65,6 +65,7 @@ export const NoCreditsPopup = ({ open, onClose, daysUntilReset = 7 }: NoCreditsP
                 Upgrade to Premium
               </Button>
             </div>
+*/}
 
             <div className="flex items-start gap-3 p-4 rounded-lg bg-primary/5 border border-primary/20 text-left">
               <Calendar className="w-5 h-5 text-primary mt-0.5" />
