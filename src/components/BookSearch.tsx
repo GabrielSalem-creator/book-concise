@@ -298,6 +298,7 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
           className="flex-1 h-10 text-sm border-primary/20 bg-background/50"
           aria-describedby={status ? "search-status-compact" : undefined}
         />
+        {/* Premium badge - temporarily hidden
         {isPremium ? (
           <Badge className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-amber-500 text-white" role="status">
             <Crown className="w-3 h-3" aria-hidden="true" />
@@ -309,6 +310,7 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
             <span className="font-semibold text-primary">{credits}</span>
           </div>
         ) : null}
+        */}
         <Button
           onClick={handleSearch}
           disabled={isLoading}
@@ -347,6 +349,7 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
               Search for a Book
             </h2>
           </div>
+          {/* Premium badge - temporarily hidden
           {isPremium ? (
             <Badge className="flex items-center gap-1.5 bg-amber-500 text-white px-3 py-1" role="status">
               <Crown className="w-4 h-4" aria-hidden="true" />
@@ -358,6 +361,7 @@ export const BookSearch = ({ onSummaryGenerated, initialBookName = "", compact =
               <span className="text-xs sm:text-sm font-semibold text-primary">{credits} credits</span>
             </div>
           ) : null}
+          */}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
