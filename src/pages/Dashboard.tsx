@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Moon, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu, Search, Shield } from "lucide-react";
+import { Moon, LogOut, Library as LibraryIcon, Compass, MessageSquare, Menu, Search, Shield, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BookSearch } from "@/components/BookSearch";
 import { SummaryDisplay } from "@/components/SummaryDisplay";
@@ -22,9 +22,12 @@ import { useStreakMilestoneToast } from "@/components/StreakMilestoneToast";
 import { FeedbackPopup } from "@/components/FeedbackPopup";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
+import { usePullToRefresh } from "@/hooks/usePullToRefresh";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [summary, setSummary] = useState<string>("");
   const [bookTitle, setBookTitle] = useState<string>("");
   const [booksRead, setBooksRead] = useState(0);
@@ -46,7 +49,22 @@ const Dashboard = () => {
   const { toast } = useToast();
   const { isAdmin } = useAdminCheck();
   const { checkAndShowMilestone } = useStreakMilestoneToast();
+  const isMobile = useIsMobile();
   useActivityTracker();
+
+  // Pull-to-refresh for mobile
+  const handleRefresh = useCallback(async () => {
+    await loadDashboardData();
+    toast({
+      title: "Refreshed",
+      description: "Dashboard data updated",
+    });
+  }, []);
+
+  const { pullDistance, isRefreshing, isTriggered } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    threshold: 80,
+  });
 
   useEffect(() => {
     if (!user) {
@@ -200,6 +218,7 @@ const Dashboard = () => {
       }
     } finally {
       setIsLoading(false);
+      setHasLoaded(true);
     }
   };
 
@@ -290,7 +309,25 @@ const Dashboard = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
+    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5 relative">
+      {/* Pull to refresh indicator (mobile only) */}
+      {isMobile && (
+        <div 
+          className="absolute top-0 left-0 right-0 flex items-center justify-center z-[60] transition-all duration-200 pointer-events-none"
+          style={{ 
+            height: `${Math.min(pullDistance, 80)}px`,
+            opacity: pullDistance > 10 ? 1 : 0,
+          }}
+        >
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-full glass-morphism border border-primary/30 ${isRefreshing ? 'animate-pulse' : ''}`}>
+            <RefreshCw className={`w-4 h-4 text-primary ${isRefreshing ? 'animate-spin' : ''} ${isTriggered && !isRefreshing ? 'text-accent' : ''}`} />
+            <span className="text-xs font-medium">
+              {isRefreshing ? 'Refreshing...' : isTriggered ? 'Release to refresh' : 'Pull to refresh'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Skip to content link for screen readers */}
       <a 
         href="#main-content" 
@@ -506,15 +543,17 @@ const Dashboard = () => {
                   </div>
                 </Card>
               ) : (
-                <CurrentReading
-                  bookId={currentBook?.id}
-                  bookTitle={currentBook?.title}
-                  bookAuthor={currentBook?.author}
-                  progress={currentProgress}
-                  isPaused={false}
-                  onResume={handleResumeReading}
-                  onPause={handlePauseReading}
-                />
+                <div className={`transition-all duration-500 ${hasLoaded ? 'animate-fade-in opacity-100' : 'opacity-0'}`}>
+                  <CurrentReading
+                    bookId={currentBook?.id}
+                    bookTitle={currentBook?.title}
+                    bookAuthor={currentBook?.author}
+                    progress={currentProgress}
+                    isPaused={false}
+                    onResume={handleResumeReading}
+                    onPause={handlePauseReading}
+                  />
+                </div>
               )}
             </section>
 
@@ -549,12 +588,14 @@ const Dashboard = () => {
                   </div>
                 </Card>
               ) : (
-                <ReadingPlan
-                  goalId={activeGoal?.id}
-                  goalTitle={activeGoal?.title}
-                  books={readingPlanBooks}
-                  onDeletePlan={handleDeletePlan}
-                />
+                <div className={`transition-all duration-500 delay-100 ${hasLoaded ? 'animate-fade-in opacity-100' : 'opacity-0'}`}>
+                  <ReadingPlan
+                    goalId={activeGoal?.id}
+                    goalTitle={activeGoal?.title}
+                    books={readingPlanBooks}
+                    onDeletePlan={handleDeletePlan}
+                  />
+                </div>
               )}
             </section>
           </div>

@@ -432,6 +432,25 @@ Make it so detailed and specific that someone reading this summary will remember
       if (summaryError) throw summaryError;
       summaryId = summaryData.id;
       console.log(`[generate-summary] Summary saved with id: ${summaryId}`);
+
+      // Trigger background audio generation (fire and forget)
+      try {
+        const audioGenUrl = `${supabaseUrl}/functions/v1/generate-audio-background`;
+        fetch(audioGenUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            bookId: bookId,
+            summaryContent: summary
+          })
+        }).catch(err => console.error('[generate-summary] Background audio trigger failed:', err));
+        console.log('[generate-summary] Triggered background audio generation');
+      } catch (audioErr) {
+        console.error('[generate-summary] Failed to trigger audio generation:', audioErr);
+      }
     }
 
     // Get updated credits
