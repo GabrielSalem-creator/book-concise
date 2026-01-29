@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.0';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.75.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +11,13 @@ const corsHeaders = {
 const FEMALE_VOICE = 'en-US-AvaNeural';
 const MALE_VOICE = 'en-US-AndrewNeural';
 
+interface Summary {
+  id: string;
+  book_id: string;
+  content: string;
+  audio_url: string | null;
+}
+
 async function generateAudioForVoice(
   text: string, 
   voiceName: string, 
@@ -20,7 +27,6 @@ async function generateAudioForVoice(
   try {
     let region = azureRegion;
     
-    // Handle case where region is provided as full URL
     if (region.includes('.api.cognitive.microsoft.com')) {
       const match = region.match(/https?:\/\/([^.]+)\.api\.cognitive\.microsoft\.com/);
       if (match) {
@@ -31,7 +37,7 @@ async function generateAudioForVoice(
       region = region.replace(/https?:\/\//, '').split('.')[0];
     }
 
-    console.log(`Generating audio for voice: ${voiceName} in region: ${region}`);
+    console.log(`[TTS] Generating ${voiceName} in region: ${region}`);
 
     const escapedText = text
       .replace(/&/g, '&amp;')
@@ -64,14 +70,13 @@ async function generateAudioForVoice(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Azure TTS error for ${voiceName}:`, response.status, errorText);
+      console.error(`[TTS] Azure error for ${voiceName}:`, response.status, errorText);
       return null;
     }
 
     const audioBuffer = await response.arrayBuffer();
     const uint8Array = new Uint8Array(audioBuffer);
     
-    // Convert to base64 in chunks
     let binaryString = '';
     const chunkSize = 8192;
     for (let i = 0; i < uint8Array.length; i += chunkSize) {
@@ -80,13 +85,167 @@ async function generateAudioForVoice(
     }
     const base64Audio = btoa(binaryString);
     
-    console.log(`Generated audio for ${voiceName}: ${audioBuffer.byteLength} bytes`);
+    console.log(`[TTS] Generated ${voiceName}: ${audioBuffer.byteLength} bytes`);
     return base64Audio;
   } catch (error) {
-    console.error(`Failed to generate audio for ${voiceName}:`, error);
+    console.error(`[TTS] Failed for ${voiceName}:`, error);
     return null;
   }
 }
+
+// Find summaries that need audio
+async function getSummariesNeedingAudio(supabase: SupabaseClient): Promise<Summary[]> {
+  const { data: allSummaries, error } = await supabase
+    .from('summaries')
+    .select('id, book_id, content, audio_url')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[BG-AUDIO] Error fetching summaries:', error);
+    return [];
+  }
+
+  const summaries = (allSummaries || []) as Summary[];
+  
+  return summaries.filter(summary => {
+    if (!summary.audio_url) return true;
+    
+    try {
+      const audioData = typeof summary.audio_url === 'string' 
+        ? JSON.parse(summary.audio_url) 
+        : summary.audio_url;
+      
+      const hasFemale = audioData[FEMALE_VOICE] && audioData[FEMALE_VOICE].length > 100;
+      const hasMale = audioData[MALE_VOICE] && audioData[MALE_VOICE].length > 100;
+      
+      return !hasFemale || !hasMale;
+    } catch {
+      return true;
+    }
+  });
+}
+
+// Process a single summary
+async function processSingleSummary(
+  supabase: SupabaseClient,
+  summary: Summary,
+  azureKey: string,
+  azureRegion: string
+): Promise<{ success: boolean; bookId: string }> {
+  console.log(`[BG-AUDIO] Processing book ${summary.book_id}`);
+  
+  let existingAudio: Record<string, string> = {};
+  if (summary.audio_url) {
+    try {
+      existingAudio = typeof summary.audio_url === 'string'
+        ? JSON.parse(summary.audio_url)
+        : summary.audio_url;
+    } catch {
+      existingAudio = {};
+    }
+  }
+
+  const needsFemale = !existingAudio[FEMALE_VOICE] || existingAudio[FEMALE_VOICE].length < 100;
+  const needsMale = !existingAudio[MALE_VOICE] || existingAudio[MALE_VOICE].length < 100;
+
+  const audioCache = { ...existingAudio };
+  let success = true;
+
+  if (needsFemale) {
+    const femaleAudio = await generateAudioForVoice(
+      summary.content,
+      FEMALE_VOICE,
+      azureKey,
+      azureRegion
+    );
+    if (femaleAudio) {
+      audioCache[FEMALE_VOICE] = femaleAudio;
+    } else {
+      success = false;
+    }
+  }
+
+  if (needsMale) {
+    const maleAudio = await generateAudioForVoice(
+      summary.content,
+      MALE_VOICE,
+      azureKey,
+      azureRegion
+    );
+    if (maleAudio) {
+      audioCache[MALE_VOICE] = maleAudio;
+    } else {
+      success = false;
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from('summaries')
+    .update({ audio_url: JSON.stringify(audioCache) })
+    .eq('id', summary.id);
+
+  if (updateError) {
+    console.error(`[BG-AUDIO] Update failed for ${summary.id}:`, updateError);
+    return { success: false, bookId: summary.book_id };
+  }
+
+  console.log(`[BG-AUDIO] Completed book ${summary.book_id} (success: ${success})`);
+  return { success, bookId: summary.book_id };
+}
+
+// Process a single book by ID
+async function processSingleBook(
+  supabase: SupabaseClient,
+  bookId: string,
+  summaryContent: string,
+  azureKey: string,
+  azureRegion: string
+) {
+  console.log(`[BG-AUDIO] Processing single book ${bookId}`);
+  
+  const audioCache: Record<string, string> = {};
+
+  const femaleAudio = await generateAudioForVoice(
+    summaryContent,
+    FEMALE_VOICE,
+    azureKey,
+    azureRegion
+  );
+  if (femaleAudio) {
+    audioCache[FEMALE_VOICE] = femaleAudio;
+  }
+
+  const maleAudio = await generateAudioForVoice(
+    summaryContent,
+    MALE_VOICE,
+    azureKey,
+    azureRegion
+  );
+  if (maleAudio) {
+    audioCache[MALE_VOICE] = maleAudio;
+  }
+
+  if (Object.keys(audioCache).length > 0) {
+    const { error: updateError } = await supabase
+      .from('summaries')
+      .update({ audio_url: JSON.stringify(audioCache) })
+      .eq('book_id', bookId);
+
+    if (updateError) {
+      console.error(`[BG-AUDIO] Update failed for book ${bookId}:`, updateError);
+      return { success: false, error: updateError.message };
+    }
+    
+    console.log(`[BG-AUDIO] Cached ${Object.keys(audioCache).length} voices for book ${bookId}`);
+    return { success: true, voicesGenerated: Object.keys(audioCache).length };
+  }
+
+  return { success: false, error: 'No audio generated' };
+}
+
+declare const EdgeRuntime: {
+  waitUntil: (promise: Promise<unknown>) => void;
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -100,7 +259,7 @@ serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!AZURE_TTS_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("Missing required environment variables");
+      console.error("[BG-AUDIO] Missing environment variables");
       return new Response(
         JSON.stringify({ error: "Server configuration error" }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -108,161 +267,118 @@ serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { bookId, summaryContent, action } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { bookId, summaryContent, action } = body;
 
-    // Action: Generate audio for ALL summaries without audio
-    if (action === 'generateAll') {
-      console.log('Generating audio for all summaries without audio...');
+    // Action: Process ONE book that needs audio (for repeated calls)
+    if (action === 'processOne') {
+      const summariesNeedingAudio = await getSummariesNeedingAudio(supabase);
       
-      const { data: summaries, error: fetchError } = await supabase
-        .from('summaries')
-        .select('id, book_id, content, audio_url')
-        .or('audio_url.is.null,audio_url.eq.{}');
-
-      if (fetchError) {
-        console.error('Error fetching summaries:', fetchError);
+      if (summariesNeedingAudio.length === 0) {
         return new Response(
-          JSON.stringify({ error: fetchError.message }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ 
+            success: true, 
+            message: 'All books have audio!',
+            remaining: 0,
+            done: true
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      console.log(`Found ${summaries?.length || 0} summaries needing audio`);
-
-      let processed = 0;
-      let failed = 0;
-
-      for (const summary of summaries || []) {
-        // Check if already has both voices
-        let existingAudio: Record<string, string> = {};
-        if (summary.audio_url) {
-          try {
-            existingAudio = JSON.parse(summary.audio_url);
-          } catch {
-            existingAudio = {};
-          }
-        }
-
-        const needsFemale = !existingAudio[FEMALE_VOICE];
-        const needsMale = !existingAudio[MALE_VOICE];
-
-        if (!needsFemale && !needsMale) {
-          continue;
-        }
-
-        const audioCache = { ...existingAudio };
-
-        if (needsFemale) {
-          const femaleAudio = await generateAudioForVoice(
-            summary.content,
-            FEMALE_VOICE,
-            AZURE_TTS_KEY,
-            AZURE_TTS_REGION
-          );
-          if (femaleAudio) {
-            audioCache[FEMALE_VOICE] = femaleAudio;
-          } else {
-            failed++;
-          }
-        }
-
-        if (needsMale) {
-          const maleAudio = await generateAudioForVoice(
-            summary.content,
-            MALE_VOICE,
-            AZURE_TTS_KEY,
-            AZURE_TTS_REGION
-          );
-          if (maleAudio) {
-            audioCache[MALE_VOICE] = maleAudio;
-          } else {
-            failed++;
-          }
-        }
-
-        // Update the summary with cached audio
-        const { error: updateError } = await supabase
-          .from('summaries')
-          .update({ audio_url: JSON.stringify(audioCache) })
-          .eq('id', summary.id);
-
-        if (updateError) {
-          console.error(`Failed to update summary ${summary.id}:`, updateError);
-          failed++;
-        } else {
-          processed++;
-        }
-      }
-
+      // Process just the first one in background
+      const summary = summariesNeedingAudio[0];
+      
+      EdgeRuntime.waitUntil(
+        processSingleSummary(supabase, summary, AZURE_TTS_KEY, AZURE_TTS_REGION)
+      );
+      
       return new Response(
         JSON.stringify({ 
           success: true, 
-          processed, 
-          failed,
-          message: `Processed ${processed} summaries, ${failed} failures`
+          bookId: summary.book_id,
+          remaining: summariesNeedingAudio.length - 1,
+          processing: true,
+          message: `Started processing book ${summary.book_id}`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Action: Generate audio for a specific book
-    if (bookId && summaryContent) {
-      console.log(`Generating audio for book ${bookId}`);
-      
-      const audioCache: Record<string, string> = {};
+    // Action: Get status
+    if (action === 'status') {
+      const { data: allSummaries } = await supabase
+        .from('summaries')
+        .select('id, book_id, audio_url');
 
-      // Generate female voice
-      const femaleAudio = await generateAudioForVoice(
-        summaryContent,
-        FEMALE_VOICE,
-        AZURE_TTS_KEY,
-        AZURE_TTS_REGION
-      );
-      if (femaleAudio) {
-        audioCache[FEMALE_VOICE] = femaleAudio;
-      }
+      const summaries = (allSummaries || []) as Summary[];
 
-      // Generate male voice
-      const maleAudio = await generateAudioForVoice(
-        summaryContent,
-        MALE_VOICE,
-        AZURE_TTS_KEY,
-        AZURE_TTS_REGION
-      );
-      if (maleAudio) {
-        audioCache[MALE_VOICE] = maleAudio;
-      }
+      let withAudio = 0;
+      let withoutAudio = 0;
+      let partial = 0;
 
-      if (Object.keys(audioCache).length > 0) {
-        const { error: updateError } = await supabase
-          .from('summaries')
-          .update({ audio_url: JSON.stringify(audioCache) })
-          .eq('book_id', bookId);
-
-        if (updateError) {
-          console.error('Failed to update summary with audio:', updateError);
-        } else {
-          console.log(`Successfully cached audio for book ${bookId}`);
+      for (const s of summaries) {
+        if (!s.audio_url) {
+          withoutAudio++;
+          continue;
+        }
+        try {
+          const data = typeof s.audio_url === 'string' ? JSON.parse(s.audio_url) : s.audio_url;
+          const hasFemale = data[FEMALE_VOICE]?.length > 100;
+          const hasMale = data[MALE_VOICE]?.length > 100;
+          if (hasFemale && hasMale) withAudio++;
+          else if (hasFemale || hasMale) partial++;
+          else withoutAudio++;
+        } catch {
+          withoutAudio++;
         }
       }
 
       return new Response(
         JSON.stringify({ 
+          total: summaries.length,
+          withAudio,
+          partial,
+          withoutAudio,
+          percentComplete: summaries.length 
+            ? Math.round((withAudio / summaries.length) * 100) 
+            : 0
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Action: Generate audio for a specific book (called from generate-summary)
+    if (bookId && summaryContent) {
+      // Run in background using waitUntil
+      EdgeRuntime.waitUntil(
+        processSingleBook(supabase, bookId, summaryContent, AZURE_TTS_KEY, AZURE_TTS_REGION)
+      );
+
+      return new Response(
+        JSON.stringify({ 
           success: true, 
-          voicesGenerated: Object.keys(audioCache).length
+          message: `Background audio generation started for book ${bookId}`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     return new Response(
-      JSON.stringify({ error: "Invalid request. Provide bookId and summaryContent, or action='generateAll'" }),
+      JSON.stringify({ 
+        error: "Invalid request",
+        usage: {
+          processOne: "POST with {action: 'processOne'} - processes one book at a time",
+          status: "POST with {action: 'status'} - get audio generation status",
+          singleBook: "POST with {bookId: string, summaryContent: string} - generate for specific book"
+        }
+      }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
-    console.error("Background audio generation error:", errorMessage);
+    console.error("[BG-AUDIO] Error:", errorMessage);
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
