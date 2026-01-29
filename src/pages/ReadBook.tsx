@@ -783,35 +783,47 @@ const ReadBook = () => {
   };
 
   const handleShare = async () => {
+    // Share the PDF link if available
+    const pdfUrl = book?.pdf_url;
+    
+    if (!pdfUrl) {
+      toast({
+        title: "No PDF available",
+        description: "This book doesn't have a PDF to share",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Use Web Share API if available (mobile/iOS)
     if (navigator.share) {
       try {
         await navigator.share({
-          title: book?.title || 'Book Summary',
-          text: summary.substring(0, 500) + '...',
-          url: window.location.href,
+          title: book?.title || 'Book PDF',
+          text: `Check out "${book?.title}" by ${book?.author || 'Unknown'}`,
+          url: pdfUrl,
         });
         toast({
           title: "Shared!",
-          description: "Content shared successfully",
+          description: "PDF link shared successfully",
         });
       } catch (err: any) {
         // User cancelled or share failed
         if (err.name !== 'AbortError') {
           // Fallback to clipboard
-          await navigator.clipboard.writeText(summary);
+          await navigator.clipboard.writeText(pdfUrl);
           toast({
             title: "Copied!",
-            description: "Summary copied to clipboard",
+            description: "PDF link copied to clipboard",
           });
         }
       }
     } else {
-      // Fallback for desktop
-      await navigator.clipboard.writeText(summary);
+      // Fallback for desktop - copy PDF link to clipboard
+      await navigator.clipboard.writeText(pdfUrl);
       toast({
         title: "Copied!",
-        description: "Summary copied to clipboard",
+        description: "PDF link copied to clipboard",
       });
     }
   };
