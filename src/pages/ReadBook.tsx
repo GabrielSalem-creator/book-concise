@@ -36,15 +36,23 @@ const ReadBook = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentAudioUrlRef = useRef<string | null>(null);
 
-  // Cleanup: Stop audio when leaving the page
+  // Cleanup: Stop all audio when leaving the page
   useEffect(() => {
     return () => {
+      // Cleanup HTML Audio
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = '';
       }
       if (currentAudioUrlRef.current) {
         URL.revokeObjectURL(currentAudioUrlRef.current);
+      }
+      // Cleanup Web Speech API
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      if ((window as any).__progressInterval) {
+        clearInterval((window as any).__progressInterval);
       }
     };
   }, []);
@@ -371,7 +379,6 @@ const ReadBook = () => {
 
   // Unlock audio for iOS - must be called on user interaction
   const unlockAudioForIOS = () => {
-    // Create a silent audio context to unlock audio on iOS
     const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
     if (AudioContext) {
       const ctx = new AudioContext();
@@ -384,7 +391,363 @@ const ReadBook = () => {
     }
   };
 
-  // Azure TTS Play Handler with caching and iOS compatibility
+  // ================== MULTIPLE TTS STRATEGIES ==================
+
+  // STRATEGY 1: Play from cached audio in database
+  const tryPlayFromCache = async (): Promise<boolean> => {
+    console.log('[TTS Strategy 1] Trying cached audio...');
+    try {
+      const { data: summaryData } = await supabase
+        .from('summaries')
+        .select('audio_url')
+        .eq('book_id', bookId)
+        .maybeSingle();
+      
+      if (summaryData?.audio_url) {
+        try {
+          const cached = JSON.parse(summaryData.audio_url);
+          if (cached[selectedVoice]) {
+            console.log('[TTS Strategy 1] Found cached audio for voice:', selectedVoice);
+            return await playBase64Audio(cached[selectedVoice]);
+          }
+        } catch {
+          // Not valid JSON, ignore
+        }
+      }
+    } catch (err) {
+      console.error('[TTS Strategy 1] Cache check failed:', err);
+    }
+    return false;
+  };
+
+  // STRATEGY 2: Generate via Azure TTS edge function (supabase.functions.invoke)
+  const tryAzureTTSInvoke = async (): Promise<boolean> => {
+    console.log('[TTS Strategy 2] Trying Azure TTS via invoke...');
+    try {
+      const { data, error } = await supabase.functions.invoke('azure-tts', {
+        body: {
+          action: 'speak',
+          text: summary,
+          voiceName: selectedVoice,
+        }
+      });
+
+      if (error) {
+        console.error('[TTS Strategy 2] Invoke error:', error);
+        return false;
+      }
+
+      if (!data?.audio) {
+        console.error('[TTS Strategy 2] No audio in response');
+        return false;
+      }
+
+      console.log('[TTS Strategy 2] Got audio, attempting playback...');
+      const success = await playBase64Audio(data.audio);
+      
+      if (success) {
+        // Cache the audio in background
+        cacheAudioInBackground(data.audio);
+      }
+      
+      return success;
+    } catch (err) {
+      console.error('[TTS Strategy 2] Failed:', err);
+      return false;
+    }
+  };
+
+  // STRATEGY 3: Generate via direct fetch to Azure TTS edge function
+  const tryAzureTTSFetch = async (): Promise<boolean> => {
+    console.log('[TTS Strategy 3] Trying Azure TTS via direct fetch...');
+    try {
+      const response = await fetch(
+        'https://rldrcongresqaqbebceb.supabase.co/functions/v1/azure-tts',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZHJjb25ncmVzcWFxYmViY2ViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MzA4MTYsImV4cCI6MjA3MzAwNjgxNn0.lEyfko2_9YqtYG9H8ET8HMZOgplxJND1zm8zcS8AnJo`,
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZHJjb25ncmVzcWFxYmViY2ViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MzA4MTYsImV4cCI6MjA3MzAwNjgxNn0.lEyfko2_9YqtYG9H8ET8HMZOgplxJND1zm8zcS8AnJo',
+          },
+          body: JSON.stringify({
+            action: 'speak',
+            text: summary,
+            voiceName: selectedVoice,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        console.error('[TTS Strategy 3] HTTP error:', response.status);
+        return false;
+      }
+
+      const data = await response.json();
+      
+      if (!data?.audio) {
+        console.error('[TTS Strategy 3] No audio in response');
+        return false;
+      }
+
+      console.log('[TTS Strategy 3] Got audio, attempting playback...');
+      const success = await playBase64Audio(data.audio);
+      
+      if (success) {
+        cacheAudioInBackground(data.audio);
+      }
+      
+      return success;
+    } catch (err) {
+      console.error('[TTS Strategy 3] Failed:', err);
+      return false;
+    }
+  };
+
+  // STRATEGY 4: Web Speech API fallback (browser built-in TTS)
+  const tryWebSpeechAPI = async (): Promise<boolean> => {
+    console.log('[TTS Strategy 4] Trying Web Speech API...');
+    
+    if (!('speechSynthesis' in window)) {
+      console.error('[TTS Strategy 4] speechSynthesis not supported');
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      try {
+        // Cancel any existing speech
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(summary);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
+        // Try to find a good voice
+        const voices = window.speechSynthesis.getVoices();
+        const englishVoice = voices.find(v => 
+          v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Enhanced'))
+        ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
+        
+        if (englishVoice) {
+          utterance.voice = englishVoice;
+          console.log('[TTS Strategy 4] Using voice:', englishVoice.name);
+        }
+
+        utterance.onstart = () => {
+          console.log('[TTS Strategy 4] Started speaking');
+          setIsReading(true);
+          setIsGeneratingAudio(false);
+          resolve(true);
+        };
+
+        utterance.onend = () => {
+          console.log('[TTS Strategy 4] Finished speaking');
+          setIsReading(false);
+          setProgress(100);
+          handleBookCompletion();
+        };
+
+        utterance.onerror = (e) => {
+          console.error('[TTS Strategy 4] Error:', e);
+          resolve(false);
+        };
+
+        // Track progress (approximate)
+        let startTime = Date.now();
+        const estimatedDuration = (summary.length / 15) * 1000; // ~15 chars per second
+        
+        const progressInterval = setInterval(() => {
+          if (!window.speechSynthesis.speaking) {
+            clearInterval(progressInterval);
+            return;
+          }
+          const elapsed = Date.now() - startTime;
+          const pct = Math.min((elapsed / estimatedDuration) * 100, 99);
+          setProgress(pct);
+        }, 500);
+
+        // Store reference for pause/stop
+        (window as any).__currentUtterance = utterance;
+        (window as any).__progressInterval = progressInterval;
+
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.error('[TTS Strategy 4] Failed:', err);
+        resolve(false);
+      }
+    });
+  };
+
+  // STRATEGY 5: Use data URI directly (avoids blob URL issues on iOS)
+  const tryDataURIPlayback = async (base64Audio: string): Promise<boolean> => {
+    console.log('[TTS Strategy 5] Trying data URI playback...');
+    try {
+      const audio = new Audio(`data:audio/mpeg;base64,${base64Audio}`);
+      audioRef.current = audio;
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.error('[TTS Strategy 5] Timeout waiting for audio');
+          resolve(false);
+        }, 10000);
+
+        audio.oncanplaythrough = async () => {
+          clearTimeout(timeout);
+          try {
+            await audio.play();
+            console.log('[TTS Strategy 5] Playing via data URI');
+            setIsReading(true);
+            setIsGeneratingAudio(false);
+            setupAudioEventListeners(audio);
+            resolve(true);
+          } catch (e) {
+            console.error('[TTS Strategy 5] Play failed:', e);
+            resolve(false);
+          }
+        };
+
+        audio.onerror = () => {
+          clearTimeout(timeout);
+          console.error('[TTS Strategy 5] Audio error');
+          resolve(false);
+        };
+
+        audio.load();
+      });
+    } catch (err) {
+      console.error('[TTS Strategy 5] Failed:', err);
+      return false;
+    }
+  };
+
+  // Helper: Play base64 audio (tries blob URL first, then data URI)
+  const playBase64Audio = async (base64Audio: string): Promise<boolean> => {
+    // First try blob URL (more memory efficient)
+    try {
+      const binaryString = atob(base64Audio);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      if (currentAudioUrlRef.current) {
+        URL.revokeObjectURL(currentAudioUrlRef.current);
+      }
+      currentAudioUrlRef.current = audioUrl;
+
+      const audio = new Audio();
+      audioRef.current = audio;
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn('[playBase64Audio] Blob URL timeout, trying data URI...');
+          resolve(false); // Will try data URI fallback
+        }, 8000);
+
+        audio.oncanplaythrough = async () => {
+          clearTimeout(timeout);
+          try {
+            await audio.play();
+            console.log('[playBase64Audio] Playing via blob URL');
+            setIsReading(true);
+            setIsGeneratingAudio(false);
+            setupAudioEventListeners(audio);
+            toast({
+              title: "Now Playing",
+              description: `${selectedVoice.split('-').slice(2).join(' ').replace('Neural', '')} voice`,
+            });
+            resolve(true);
+          } catch (e) {
+            console.error('[playBase64Audio] Blob play failed:', e);
+            resolve(false);
+          }
+        };
+
+        audio.onerror = () => {
+          clearTimeout(timeout);
+          console.error('[playBase64Audio] Blob audio error');
+          resolve(false);
+        };
+
+        audio.src = audioUrl;
+        audio.load();
+      });
+    } catch (err) {
+      console.error('[playBase64Audio] Blob conversion failed:', err);
+    }
+
+    // Fallback to data URI
+    return await tryDataURIPlayback(base64Audio);
+  };
+
+  // Helper: Setup audio event listeners
+  const setupAudioEventListeners = (audio: HTMLAudioElement) => {
+    audio.addEventListener('timeupdate', () => {
+      if (audio.duration > 0) {
+        const currentProgress = (audio.currentTime / audio.duration) * 100;
+        setProgress(currentProgress);
+        
+        if (readingSessionId && Math.floor(currentProgress) % 10 === 0) {
+          supabase
+            .from('reading_sessions')
+            .update({ 
+              progress_percentage: currentProgress,
+              last_read_at: new Date().toISOString()
+            })
+            .eq('id', readingSessionId)
+            .then();
+        }
+      }
+    });
+
+    audio.addEventListener('ended', async () => {
+      setIsReading(false);
+      setIsPaused(false);
+      setProgress(100);
+      await handleBookCompletion();
+    });
+
+    audio.addEventListener('error', (e) => {
+      console.error('[Audio] Playback error:', e);
+      setIsReading(false);
+      setIsGeneratingAudio(false);
+    });
+  };
+
+  // Helper: Cache audio in background
+  const cacheAudioInBackground = async (audioBase64: string) => {
+    try {
+      const { data: currentData } = await supabase
+        .from('summaries')
+        .select('audio_url')
+        .eq('book_id', bookId)
+        .maybeSingle();
+      
+      let audioCache: Record<string, string> = {};
+      if (currentData?.audio_url) {
+        try {
+          audioCache = JSON.parse(currentData.audio_url);
+        } catch {
+          audioCache = {};
+        }
+      }
+      audioCache[selectedVoice] = audioBase64;
+      
+      await supabase
+        .from('summaries')
+        .update({ audio_url: JSON.stringify(audioCache) })
+        .eq('book_id', bookId);
+      
+      console.log('[Cache] Audio cached for voice:', selectedVoice);
+    } catch (err) {
+      console.error('[Cache] Failed:', err);
+    }
+  };
+
+  // MAIN PLAY HANDLER - Tries all strategies in order
   const handlePlay = async () => {
     if (!summary) {
       toast({
@@ -406,11 +769,18 @@ const ReadBook = () => {
         await audioRef.current.play();
         setIsPaused(false);
         setIsReading(true);
+        return;
       } catch (e) {
         console.error('Resume failed:', e);
-        // Reset and try fresh
         setIsPaused(false);
       }
+    }
+
+    // Also check for Web Speech API pause
+    if (isPaused && (window as any).__currentUtterance) {
+      window.speechSynthesis.resume();
+      setIsPaused(false);
+      setIsReading(true);
       return;
     }
 
@@ -422,203 +792,105 @@ const ReadBook = () => {
     if (currentAudioUrlRef.current) {
       URL.revokeObjectURL(currentAudioUrlRef.current);
     }
+    window.speechSynthesis?.cancel();
 
     setIsGeneratingAudio(true);
+    setProgress(0);
 
-    try {
-      let audioBase64: string | null = null;
-      
-      // Check for cached audio in the summaries table
-      const { data: summaryData } = await supabase
-        .from('summaries')
-        .select('audio_url')
-        .eq('book_id', bookId)
-        .maybeSingle();
-      
-      // If we have cached audio for this voice, use it
-      if (summaryData?.audio_url) {
-        try {
-          const cached = JSON.parse(summaryData.audio_url);
-          if (cached[selectedVoice]) {
-            audioBase64 = cached[selectedVoice];
-            console.log('Using cached audio for voice:', selectedVoice);
-          }
-        } catch {
-          // Not valid JSON, might be old format - ignore
+    toast({
+      title: "Generating audio...",
+      description: "Trying best available method",
+    });
+
+    // TRY ALL STRATEGIES IN ORDER
+    const strategies = [
+      { name: 'Cached Audio', fn: tryPlayFromCache },
+      { name: 'Azure TTS (invoke)', fn: tryAzureTTSInvoke },
+      { name: 'Azure TTS (fetch)', fn: tryAzureTTSFetch },
+      { name: 'Web Speech API', fn: tryWebSpeechAPI },
+    ];
+
+    for (const strategy of strategies) {
+      console.log(`\n========== Trying: ${strategy.name} ==========`);
+      try {
+        const success = await strategy.fn();
+        if (success) {
+          console.log(`✅ SUCCESS with: ${strategy.name}`);
+          return;
         }
+        console.log(`❌ ${strategy.name} failed, trying next...`);
+      } catch (err) {
+        console.error(`❌ ${strategy.name} threw error:`, err);
       }
-
-      // If no cached audio, generate new
-      if (!audioBase64) {
-        console.log(`Generating Azure TTS with voice: ${selectedVoice}`);
-        
-        toast({
-          title: "Generating audio...",
-          description: "This may take a few seconds",
-        });
-        
-        const { data, error } = await supabase.functions.invoke('azure-tts', {
-          body: {
-            action: 'speak',
-            text: summary,
-            voiceName: selectedVoice,
-          }
-        });
-
-        if (error) {
-          throw new Error(error.message);
-        }
-
-        if (!data?.audio) {
-          throw new Error('No audio returned from Azure TTS');
-        }
-
-        audioBase64 = data.audio;
-
-        // Cache the audio for future use (in background, fire and forget)
-        const cacheAudio = async () => {
-          try {
-            const { data: currentData } = await supabase
-              .from('summaries')
-              .select('audio_url')
-              .eq('book_id', bookId)
-              .maybeSingle();
-            
-            let audioCache: Record<string, string> = {};
-            if (currentData?.audio_url) {
-              try {
-                audioCache = JSON.parse(currentData.audio_url);
-              } catch {
-                audioCache = {};
-              }
-            }
-            audioCache[selectedVoice] = audioBase64!;
-            
-            await supabase
-              .from('summaries')
-              .update({ audio_url: JSON.stringify(audioCache) })
-              .eq('book_id', bookId);
-            
-            console.log('Cached audio for voice:', selectedVoice);
-          } catch (err) {
-            console.error('Cache failed:', err);
-          }
-        };
-        cacheAudio();
-      }
-
-      // Convert base64 to audio blob
-      const binaryString = atob(audioBase64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      currentAudioUrlRef.current = audioUrl;
-
-      // Create audio element
-      const audio = new Audio();
-      audioRef.current = audio;
-      
-      // Set up event listeners before setting src (important for iOS)
-      audio.addEventListener('canplaythrough', async () => {
-        try {
-          await audio.play();
-          setIsReading(true);
-          setIsGeneratingAudio(false);
-          toast({
-            title: "Now Playing",
-            description: `${selectedVoice.split('-').slice(2).join(' ').replace('Neural', '')} voice`,
-          });
-        } catch (playError: any) {
-          console.error('Play failed:', playError);
-          setIsGeneratingAudio(false);
-          toast({
-            title: "Tap to Play",
-            description: "Tap the play button again to start audio",
-          });
-        }
-      }, { once: true });
-
-      audio.addEventListener('timeupdate', () => {
-        if (audio.duration > 0) {
-          const currentProgress = (audio.currentTime / audio.duration) * 100;
-          setProgress(currentProgress);
-          
-          // Save progress every 10%
-          if (readingSessionId && Math.floor(currentProgress) % 10 === 0) {
-            supabase
-              .from('reading_sessions')
-              .update({ 
-                progress_percentage: currentProgress,
-                last_read_at: new Date().toISOString()
-              })
-              .eq('id', readingSessionId)
-              .then();
-          }
-        }
-      });
-
-      audio.addEventListener('ended', async () => {
-        setIsReading(false);
-        setIsPaused(false);
-        setProgress(100);
-        await handleBookCompletion();
-      });
-
-      audio.addEventListener('error', (e) => {
-        console.error('Audio playback error:', e);
-        setIsReading(false);
-        setIsGeneratingAudio(false);
-        toast({
-          title: "Playback Error",
-          description: "Tap play to try again",
-          variant: "destructive",
-        });
-      });
-
-      // Set the source - this triggers loading
-      audio.src = audioUrl;
-      audio.load();
-
-    } catch (error: any) {
-      console.error('Azure TTS failed:', error);
-      setIsGeneratingAudio(false);
-      toast({
-        title: "Audio Generation Failed",
-        description: error.message || "Could not generate speech. Please try again.",
-        variant: "destructive",
-      });
     }
+
+    // ALL STRATEGIES FAILED
+    console.error('All TTS strategies failed!');
+    setIsGeneratingAudio(false);
+    toast({
+      title: "Voice Generation Failed",
+      description: "All methods failed. Please check your internet connection and try again.",
+      variant: "destructive",
+    });
   };
 
   const handlePause = async () => {
+    // Pause HTML Audio
     if (isReading && audioRef.current) {
       audioRef.current.pause();
       setIsPaused(true);
       setIsReading(false);
-      
-      if (readingSessionId) {
-        await supabase
-          .from('reading_sessions')
-          .update({ 
-            progress_percentage: progress,
-            last_read_at: new Date().toISOString()
-          })
-          .eq('id', readingSessionId);
-      }
+    }
+    
+    // Pause Web Speech API
+    if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+      window.speechSynthesis.pause();
+      setIsPaused(true);
+      setIsReading(false);
+    }
+    
+    if (readingSessionId) {
+      await supabase
+        .from('reading_sessions')
+        .update({ 
+          progress_percentage: progress,
+          last_read_at: new Date().toISOString()
+        })
+        .eq('id', readingSessionId);
     }
   };
 
   const handleStop = async () => {
+    // Stop HTML Audio
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
+      audioRef.current.src = '';
+      audioRef.current = null;
     }
+    
+    // Cleanup blob URL
+    if (currentAudioUrlRef.current) {
+      URL.revokeObjectURL(currentAudioUrlRef.current);
+      currentAudioUrlRef.current = null;
+    }
+    
+    // Stop Web Speech API
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    
+    // Clear progress interval if exists
+    if ((window as any).__progressInterval) {
+      clearInterval((window as any).__progressInterval);
+      (window as any).__progressInterval = null;
+    }
+    (window as any).__currentUtterance = null;
+    
     setIsReading(false);
     setIsPaused(false);
     setProgress(0);
+    setIsGeneratingAudio(false);
     
     if (readingSessionId) {
       await supabase
