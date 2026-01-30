@@ -36,6 +36,9 @@ const ReadBook = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentAudioUrlRef = useRef<string | null>(null);
 
+  // Prevent spamming background generation calls
+  const hasTriggeredBgAudioRef = useRef(false);
+
   // Cleanup: Stop all audio when leaving the page
   useEffect(() => {
     return () => {
@@ -79,6 +82,62 @@ const ReadBook = () => {
       searchForPdf();
     }
   }, [book?.id, book?.pdf_url, isLoading]);
+
+  // Auto-trigger backend audio generation once we have a summary.
+  // This runs WITHOUT the user clicking Play, so audio is cached by the time they do.
+  useEffect(() => {
+    if (!user || !bookId) return;
+    if (!summary || isLoading) return;
+    if (hasTriggeredBgAudioRef.current) return;
+
+    const run = async () => {
+      try {
+        // Check if we already have cached audio for the standard pre-generated voices.
+        const { data } = await supabase
+          .from("summaries")
+          .select("audio_url")
+          .eq("book_id", bookId)
+          .maybeSingle();
+
+        const FEMALE = "en-US-AvaNeural";
+        const MALE = "en-US-AndrewNeural";
+
+        let hasFemale = false;
+        let hasMale = false;
+
+        if (data?.audio_url) {
+          try {
+            const parsed = JSON.parse(data.audio_url);
+            hasFemale = typeof parsed?.[FEMALE] === "string" && parsed[FEMALE].length > 100;
+            hasMale = typeof parsed?.[MALE] === "string" && parsed[MALE].length > 100;
+          } catch {
+            // ignore
+          }
+        }
+
+        if (hasFemale && hasMale) {
+          hasTriggeredBgAudioRef.current = true;
+          return;
+        }
+
+        // Fire-and-forget. Edge Function uses service role and EdgeRuntime.waitUntil.
+        hasTriggeredBgAudioRef.current = true;
+        await supabase.functions.invoke("generate-audio-background", {
+          body: {
+            bookId,
+            summaryContent: summary,
+          },
+        });
+        console.log("[BG-AUDIO][ReadBook] Triggered background audio generation");
+      } catch (e) {
+        console.warn("[BG-AUDIO][ReadBook] Failed to trigger:", e);
+        // Allow a later retry if something transient failed
+        hasTriggeredBgAudioRef.current = false;
+      }
+    };
+
+    void run();
+  }, [user, bookId, summary, isLoading]);
 
   // Auto-complete when progress reaches 100%
   useEffect(() => {

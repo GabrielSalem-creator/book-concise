@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { useBackgroundAudioGenerator } from "@/hooks/useBackgroundAudioGenerator";
 
 interface AuthContextType {
   user: User | null;
@@ -25,6 +26,10 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+
+  // Gradually pre-generate audio for all books in the background after login.
+  // This makes “Play” instant on ReadBook because audio is already cached.
+  useBackgroundAudioGenerator({ enabled: !!session });
 
   useEffect(() => {
     // Set up auth state listener FIRST
