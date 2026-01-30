@@ -18,35 +18,36 @@ interface Summary {
   audio_url: string | null;
 }
 
-async function generateAudioForVoice(
+// Helper: sleep for ms
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Generate audio with retry logic
+async function generateAudioWithRetry(
   text: string, 
   voiceName: string, 
   azureKey: string, 
-  azureRegion: string
+  azureRegion: string,
+  maxRetries: number = 3
 ): Promise<string | null> {
-  try {
-    let region = azureRegion;
-    
-    if (region.includes('.api.cognitive.microsoft.com')) {
-      const match = region.match(/https?:\/\/([^.]+)\.api\.cognitive\.microsoft\.com/);
-      if (match) {
-        region = match[1];
-      }
-    }
-    if (region.startsWith('https://') || region.startsWith('http://')) {
-      region = region.replace(/https?:\/\//, '').split('.')[0];
-    }
+  let region = azureRegion;
+  
+  // Clean up region format
+  if (region.includes('.api.cognitive.microsoft.com')) {
+    const match = region.match(/https?:\/\/([^.]+)\.api\.cognitive\.microsoft\.com/);
+    if (match) region = match[1];
+  }
+  if (region.startsWith('https://') || region.startsWith('http://')) {
+    region = region.replace(/https?:\/\//, '').split('.')[0];
+  }
 
-    console.log(`[TTS] Generating ${voiceName} in region: ${region}`);
+  const escapedText = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 
-    const escapedText = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
-
-    const ssml = `
+  const ssml = `
 <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
   <voice name='${voiceName}'>
     <prosody rate='1.0' pitch='0%'>
@@ -55,42 +56,65 @@ async function generateAudioForVoice(
   </voice>
 </speak>`.trim();
 
-    const ttsEndpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
-    
-    const response = await fetch(ttsEndpoint, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": azureKey,
-        "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "audio-24khz-96kbitrate-mono-mp3",
-        "User-Agent": "Nocturn-Background-TTS",
-      },
-      body: ssml,
-    });
+  const ttsEndpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[TTS] Azure error for ${voiceName}:`, response.status, errorText);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[TTS] Attempt ${attempt}/${maxRetries} for ${voiceName} in region: ${region}`);
+
+      const response = await fetch(ttsEndpoint, {
+        method: "POST",
+        headers: {
+          "Ocp-Apim-Subscription-Key": azureKey,
+          "Content-Type": "application/ssml+xml",
+          "X-Microsoft-OutputFormat": "audio-24khz-96kbitrate-mono-mp3",
+          "User-Agent": "Nocturn-Background-TTS",
+        },
+        body: ssml,
+      });
+
+      if (response.status === 429) {
+        const retryAfter = parseInt(response.headers.get('Retry-After') || '30');
+        console.log(`[TTS] Rate limited (429), waiting ${retryAfter}s before retry...`);
+        await sleep(retryAfter * 1000);
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[TTS] Azure error for ${voiceName}:`, response.status, errorText);
+        if (attempt < maxRetries) {
+          await sleep(2000 * attempt); // Exponential backoff
+          continue;
+        }
+        return null;
+      }
+
+      const audioBuffer = await response.arrayBuffer();
+      const uint8Array = new Uint8Array(audioBuffer);
+      
+      let binaryString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.subarray(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      const base64Audio = btoa(binaryString);
+      
+      console.log(`[TTS] Generated ${voiceName}: ${audioBuffer.byteLength} bytes`);
+      return base64Audio;
+
+    } catch (error) {
+      console.error(`[TTS] Attempt ${attempt} failed for ${voiceName}:`, error);
+      if (attempt < maxRetries) {
+        await sleep(3000 * attempt); // Longer wait on exception
+        continue;
+      }
       return null;
     }
-
-    const audioBuffer = await response.arrayBuffer();
-    const uint8Array = new Uint8Array(audioBuffer);
-    
-    let binaryString = '';
-    const chunkSize = 8192;
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.subarray(i, i + chunkSize);
-      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
-    }
-    const base64Audio = btoa(binaryString);
-    
-    console.log(`[TTS] Generated ${voiceName}: ${audioBuffer.byteLength} bytes`);
-    return base64Audio;
-  } catch (error) {
-    console.error(`[TTS] Failed for ${voiceName}:`, error);
-    return null;
   }
+  
+  return null;
 }
 
 // Find summaries that need audio
@@ -125,7 +149,7 @@ async function getSummariesNeedingAudio(supabase: SupabaseClient): Promise<Summa
   });
 }
 
-// Process a single summary
+// Process a single summary - one voice at a time with delays
 async function processSingleSummary(
   supabase: SupabaseClient,
   summary: Summary,
@@ -151,8 +175,10 @@ async function processSingleSummary(
   const audioCache = { ...existingAudio };
   let success = true;
 
+  // Process female voice first
   if (needsFemale) {
-    const femaleAudio = await generateAudioForVoice(
+    console.log('[BG-AUDIO] Generating female voice...');
+    const femaleAudio = await generateAudioWithRetry(
       summary.content,
       FEMALE_VOICE,
       azureKey,
@@ -160,13 +186,24 @@ async function processSingleSummary(
     );
     if (femaleAudio) {
       audioCache[FEMALE_VOICE] = femaleAudio;
+      // Save immediately after female generation
+      await supabase
+        .from('summaries')
+        .update({ audio_url: JSON.stringify(audioCache) })
+        .eq('id', summary.id);
+      console.log('[BG-AUDIO] Female voice saved');
     } else {
       success = false;
     }
   }
 
-  if (needsMale) {
-    const maleAudio = await generateAudioForVoice(
+  // Wait before processing male voice to avoid rate limits
+  if (needsMale && success) {
+    console.log('[BG-AUDIO] Waiting 5s before male voice...');
+    await sleep(5000);
+    
+    console.log('[BG-AUDIO] Generating male voice...');
+    const maleAudio = await generateAudioWithRetry(
       summary.content,
       MALE_VOICE,
       azureKey,
@@ -179,6 +216,7 @@ async function processSingleSummary(
     }
   }
 
+  // Final save with both voices
   const { error: updateError } = await supabase
     .from('summaries')
     .update({ audio_url: JSON.stringify(audioCache) })
@@ -193,7 +231,7 @@ async function processSingleSummary(
   return { success, bookId: summary.book_id };
 }
 
-// Process a single book by ID
+// Process a single book by ID (called from generate-summary)
 async function processSingleBook(
   supabase: SupabaseClient,
   bookId: string,
@@ -205,7 +243,9 @@ async function processSingleBook(
   
   const audioCache: Record<string, string> = {};
 
-  const femaleAudio = await generateAudioForVoice(
+  // Generate female voice
+  console.log('[BG-AUDIO] Generating female voice for new book...');
+  const femaleAudio = await generateAudioWithRetry(
     summaryContent,
     FEMALE_VOICE,
     azureKey,
@@ -213,9 +253,19 @@ async function processSingleBook(
   );
   if (femaleAudio) {
     audioCache[FEMALE_VOICE] = femaleAudio;
+    // Save immediately
+    await supabase
+      .from('summaries')
+      .update({ audio_url: JSON.stringify(audioCache) })
+      .eq('book_id', bookId);
   }
 
-  const maleAudio = await generateAudioForVoice(
+  // Wait before male voice
+  await sleep(5000);
+
+  // Generate male voice
+  console.log('[BG-AUDIO] Generating male voice for new book...');
+  const maleAudio = await generateAudioWithRetry(
     summaryContent,
     MALE_VOICE,
     azureKey,
@@ -270,7 +320,7 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { bookId, summaryContent, action } = body;
 
-    // Action: Process ONE book that needs audio (for repeated calls)
+    // Action: Process ONE book that needs audio
     if (action === 'processOne') {
       const summariesNeedingAudio = await getSummariesNeedingAudio(supabase);
       
@@ -350,7 +400,6 @@ serve(async (req) => {
 
     // Action: Generate audio for a specific book (called from generate-summary)
     if (bookId && summaryContent) {
-      // Run in background using waitUntil
       EdgeRuntime.waitUntil(
         processSingleBook(supabase, bookId, summaryContent, AZURE_TTS_KEY, AZURE_TTS_REGION)
       );
