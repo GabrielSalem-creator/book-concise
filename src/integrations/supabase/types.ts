@@ -431,6 +431,51 @@ export type Database = {
           },
         ]
       }
+      summary_audio_chunks: {
+        Row: {
+          audio_base64: string
+          book_id: string
+          chunk_index: number
+          created_at: string
+          id: string
+          summary_id: string
+          voice_name: string
+        }
+        Insert: {
+          audio_base64: string
+          book_id: string
+          chunk_index: number
+          created_at?: string
+          id?: string
+          summary_id: string
+          voice_name: string
+        }
+        Update: {
+          audio_base64?: string
+          book_id?: string
+          chunk_index?: number
+          created_at?: string
+          id?: string
+          summary_id?: string
+          voice_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "summary_audio_chunks_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "summary_audio_chunks_summary_id_fkey"
+            columns: ["summary_id"]
+            isOneToOne: false
+            referencedRelation: "summaries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_activity: {
         Row: {
           action_details: Json | null

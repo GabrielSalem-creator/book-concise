@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BookmarkPlus, Share2, ArrowLeft, Play, Pause, StopCircle, SkipBack, SkipForward, CheckCircle, Download, FileText, Headphones, Volume2, Loader2, Eye } from "lucide-react";
+import { BookmarkPlus, Share2, ArrowLeft, CheckCircle, Download, FileText, Headphones, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/AuthProvider";
 import BookChat from "@/components/BookChat";
 import PdfViewerDialog from "@/components/PdfViewerDialog";
-import AzureVoiceSelector from "@/components/AzureVoiceSelector";
+import AudioPlayerCard from "@/components/AudioPlayerCard";
 
 const ReadBook = () => {
   const { bookId } = useParams();
@@ -19,38 +18,21 @@ const ReadBook = () => {
 
   const [book, setBook] = useState<any>(null);
   const [summary, setSummary] = useState("");
-  const [isReading, setIsReading] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [selectedVoice, setSelectedVoice] = useState<string>("en-US-AvaNeural");
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [readingSessionId, setReadingSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const hasCompletedRef = useRef(false);
   const [isSearchingPdf, setIsSearchingPdf] = useState(false);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
-  
-  // Audio refs for Azure TTS
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const currentAudioUrlRef = useRef<string | null>(null);
 
-  // Prevent spamming background generation calls
-  const hasTriggeredBgAudioRef = useRef(false);
+  // Prevent spamming background chunk generation calls
+  const hasTriggeredChunkGenRef = useRef(false);
 
-  // Cleanup: Stop all audio when leaving the page
+  // Cleanup Web Speech API on unmount
   useEffect(() => {
     return () => {
-      // Cleanup HTML Audio
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      }
-      if (currentAudioUrlRef.current) {
-        URL.revokeObjectURL(currentAudioUrlRef.current);
-      }
-      // Cleanup Web Speech API
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
@@ -83,56 +65,23 @@ const ReadBook = () => {
     }
   }, [book?.id, book?.pdf_url, isLoading]);
 
-  // Auto-trigger backend audio generation once we have a summary.
-  // This runs WITHOUT the user clicking Play, so audio is cached by the time they do.
+  // Auto-trigger chunk generation once we have a summary
   useEffect(() => {
     if (!user || !bookId) return;
     if (!summary || isLoading) return;
-    if (hasTriggeredBgAudioRef.current) return;
+    if (hasTriggeredChunkGenRef.current) return;
 
     const run = async () => {
       try {
-        // Check if we already have cached audio for the standard pre-generated voices.
-        const { data } = await supabase
-          .from("summaries")
-          .select("audio_url")
-          .eq("book_id", bookId)
-          .maybeSingle();
-
-        const FEMALE = "en-US-AvaNeural";
-        const MALE = "en-US-AndrewNeural";
-
-        let hasFemale = false;
-        let hasMale = false;
-
-        if (data?.audio_url) {
-          try {
-            const parsed = JSON.parse(data.audio_url);
-            hasFemale = typeof parsed?.[FEMALE] === "string" && parsed[FEMALE].length > 100;
-            hasMale = typeof parsed?.[MALE] === "string" && parsed[MALE].length > 100;
-          } catch {
-            // ignore
-          }
-        }
-
-        if (hasFemale && hasMale) {
-          hasTriggeredBgAudioRef.current = true;
-          return;
-        }
-
-        // Fire-and-forget. Edge Function uses service role and EdgeRuntime.waitUntil.
-        hasTriggeredBgAudioRef.current = true;
-        await supabase.functions.invoke("generate-audio-background", {
-          body: {
-            bookId,
-            summaryContent: summary,
-          },
+        hasTriggeredChunkGenRef.current = true;
+        // Fire-and-forget chunk generation for both voices
+        await supabase.functions.invoke("generate-audio-chunks", {
+          body: { action: 'generate', bookId, voiceName: 'en-US-AvaNeural' }
         });
-        console.log("[BG-AUDIO][ReadBook] Triggered background audio generation");
+        console.log("[CHUNKS][ReadBook] Triggered chunk generation");
       } catch (e) {
-        console.warn("[BG-AUDIO][ReadBook] Failed to trigger:", e);
-        // Allow a later retry if something transient failed
-        hasTriggeredBgAudioRef.current = false;
+        console.warn("[CHUNKS][ReadBook] Failed to trigger:", e);
+        hasTriggeredChunkGenRef.current = false;
       }
     };
 
@@ -436,543 +385,16 @@ const ReadBook = () => {
     }
   };
 
-  // Unlock audio for iOS - must be called on user interaction
-  const unlockAudioForIOS = () => {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (AudioContext) {
-      const ctx = new AudioContext();
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-      ctx.resume();
-    }
-  };
-
-  // ================== MULTIPLE TTS STRATEGIES ==================
-
-  // STRATEGY 1: Play from cached audio in database
-  const tryPlayFromCache = async (): Promise<boolean> => {
-    console.log('[TTS Strategy 1] Trying cached audio...');
-    try {
-      const { data: summaryData } = await supabase
-        .from('summaries')
-        .select('audio_url')
-        .eq('book_id', bookId)
-        .maybeSingle();
-      
-      if (summaryData?.audio_url) {
-        try {
-          const cached = JSON.parse(summaryData.audio_url);
-          if (cached[selectedVoice]) {
-            console.log('[TTS Strategy 1] Found cached audio for voice:', selectedVoice);
-            return await playBase64Audio(cached[selectedVoice]);
-          }
-        } catch {
-          // Not valid JSON, ignore
-        }
-      }
-    } catch (err) {
-      console.error('[TTS Strategy 1] Cache check failed:', err);
-    }
-    return false;
-  };
-
-  // STRATEGY 2: Generate via Azure TTS edge function (supabase.functions.invoke)
-  const tryAzureTTSInvoke = async (): Promise<boolean> => {
-    console.log('[TTS Strategy 2] Trying Azure TTS via invoke...');
-    try {
-      const { data, error } = await supabase.functions.invoke('azure-tts', {
-        body: {
-          action: 'speak',
-          text: summary,
-          voiceName: selectedVoice,
-        }
-      });
-
-      if (error) {
-        console.error('[TTS Strategy 2] Invoke error:', error);
-        return false;
-      }
-
-      if (!data?.audio) {
-        console.error('[TTS Strategy 2] No audio in response');
-        return false;
-      }
-
-      console.log('[TTS Strategy 2] Got audio, attempting playback...');
-      const success = await playBase64Audio(data.audio);
-      
-      if (success) {
-        // Cache the audio in background
-        cacheAudioInBackground(data.audio);
-      }
-      
-      return success;
-    } catch (err) {
-      console.error('[TTS Strategy 2] Failed:', err);
-      return false;
-    }
-  };
-
-  // STRATEGY 3: Generate via direct fetch to Azure TTS edge function
-  const tryAzureTTSFetch = async (): Promise<boolean> => {
-    console.log('[TTS Strategy 3] Trying Azure TTS via direct fetch...');
-    try {
-      const response = await fetch(
-        'https://rldrcongresqaqbebceb.supabase.co/functions/v1/azure-tts',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZHJjb25ncmVzcWFxYmViY2ViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MzA4MTYsImV4cCI6MjA3MzAwNjgxNn0.lEyfko2_9YqtYG9H8ET8HMZOgplxJND1zm8zcS8AnJo`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZHJjb25ncmVzcWFxYmViY2ViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MzA4MTYsImV4cCI6MjA3MzAwNjgxNn0.lEyfko2_9YqtYG9H8ET8HMZOgplxJND1zm8zcS8AnJo',
-          },
-          body: JSON.stringify({
-            action: 'speak',
-            text: summary,
-            voiceName: selectedVoice,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        console.error('[TTS Strategy 3] HTTP error:', response.status);
-        return false;
-      }
-
-      const data = await response.json();
-      
-      if (!data?.audio) {
-        console.error('[TTS Strategy 3] No audio in response');
-        return false;
-      }
-
-      console.log('[TTS Strategy 3] Got audio, attempting playback...');
-      const success = await playBase64Audio(data.audio);
-      
-      if (success) {
-        cacheAudioInBackground(data.audio);
-      }
-      
-      return success;
-    } catch (err) {
-      console.error('[TTS Strategy 3] Failed:', err);
-      return false;
-    }
-  };
-
-  // STRATEGY 4: Web Speech API fallback (browser built-in TTS)
-  const tryWebSpeechAPI = async (): Promise<boolean> => {
-    console.log('[TTS Strategy 4] Trying Web Speech API...');
-    
-    if (!('speechSynthesis' in window)) {
-      console.error('[TTS Strategy 4] speechSynthesis not supported');
-      return false;
-    }
-
-    return new Promise((resolve) => {
-      try {
-        // Cancel any existing speech
-        window.speechSynthesis.cancel();
-
-        const utterance = new SpeechSynthesisUtterance(summary);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-
-        // Try to find a good voice
-        const voices = window.speechSynthesis.getVoices();
-        const englishVoice = voices.find(v => 
-          v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Enhanced'))
-        ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-        
-        if (englishVoice) {
-          utterance.voice = englishVoice;
-          console.log('[TTS Strategy 4] Using voice:', englishVoice.name);
-        }
-
-        utterance.onstart = () => {
-          console.log('[TTS Strategy 4] Started speaking');
-          setIsReading(true);
-          setIsGeneratingAudio(false);
-          resolve(true);
-        };
-
-        utterance.onend = () => {
-          console.log('[TTS Strategy 4] Finished speaking');
-          setIsReading(false);
-          setProgress(100);
-          handleBookCompletion();
-        };
-
-        utterance.onerror = (e) => {
-          console.error('[TTS Strategy 4] Error:', e);
-          resolve(false);
-        };
-
-        // Track progress (approximate)
-        let startTime = Date.now();
-        const estimatedDuration = (summary.length / 15) * 1000; // ~15 chars per second
-        
-        const progressInterval = setInterval(() => {
-          if (!window.speechSynthesis.speaking) {
-            clearInterval(progressInterval);
-            return;
-          }
-          const elapsed = Date.now() - startTime;
-          const pct = Math.min((elapsed / estimatedDuration) * 100, 99);
-          setProgress(pct);
-        }, 500);
-
-        // Store reference for pause/stop
-        (window as any).__currentUtterance = utterance;
-        (window as any).__progressInterval = progressInterval;
-
-        window.speechSynthesis.speak(utterance);
-      } catch (err) {
-        console.error('[TTS Strategy 4] Failed:', err);
-        resolve(false);
-      }
-    });
-  };
-
-  // STRATEGY 5: Use data URI directly (avoids blob URL issues on iOS)
-  const tryDataURIPlayback = async (base64Audio: string): Promise<boolean> => {
-    console.log('[TTS Strategy 5] Trying data URI playback...');
-    try {
-      const audio = new Audio(`data:audio/mpeg;base64,${base64Audio}`);
-      audioRef.current = audio;
-
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          console.error('[TTS Strategy 5] Timeout waiting for audio');
-          resolve(false);
-        }, 10000);
-
-        audio.oncanplaythrough = async () => {
-          clearTimeout(timeout);
-          try {
-            await audio.play();
-            console.log('[TTS Strategy 5] Playing via data URI');
-            setIsReading(true);
-            setIsGeneratingAudio(false);
-            setupAudioEventListeners(audio);
-            resolve(true);
-          } catch (e) {
-            console.error('[TTS Strategy 5] Play failed:', e);
-            resolve(false);
-          }
-        };
-
-        audio.onerror = () => {
-          clearTimeout(timeout);
-          console.error('[TTS Strategy 5] Audio error');
-          resolve(false);
-        };
-
-        audio.load();
-      });
-    } catch (err) {
-      console.error('[TTS Strategy 5] Failed:', err);
-      return false;
-    }
-  };
-
-  // Helper: Play base64 audio (tries blob URL first, then data URI)
-  const playBase64Audio = async (base64Audio: string): Promise<boolean> => {
-    // First try blob URL (more memory efficient)
-    try {
-      const binaryString = atob(base64Audio);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      
-      if (currentAudioUrlRef.current) {
-        URL.revokeObjectURL(currentAudioUrlRef.current);
-      }
-      currentAudioUrlRef.current = audioUrl;
-
-      const audio = new Audio();
-      audioRef.current = audio;
-
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          console.warn('[playBase64Audio] Blob URL timeout, trying data URI...');
-          resolve(false); // Will try data URI fallback
-        }, 8000);
-
-        audio.oncanplaythrough = async () => {
-          clearTimeout(timeout);
-          try {
-            await audio.play();
-            console.log('[playBase64Audio] Playing via blob URL');
-            setIsReading(true);
-            setIsGeneratingAudio(false);
-            setupAudioEventListeners(audio);
-            toast({
-              title: "Now Playing",
-              description: `${selectedVoice.split('-').slice(2).join(' ').replace('Neural', '')} voice`,
-            });
-            resolve(true);
-          } catch (e) {
-            console.error('[playBase64Audio] Blob play failed:', e);
-            resolve(false);
-          }
-        };
-
-        audio.onerror = () => {
-          clearTimeout(timeout);
-          console.error('[playBase64Audio] Blob audio error');
-          resolve(false);
-        };
-
-        audio.src = audioUrl;
-        audio.load();
-      });
-    } catch (err) {
-      console.error('[playBase64Audio] Blob conversion failed:', err);
-    }
-
-    // Fallback to data URI
-    return await tryDataURIPlayback(base64Audio);
-  };
-
-  // Helper: Setup audio event listeners
-  const setupAudioEventListeners = (audio: HTMLAudioElement) => {
-    audio.addEventListener('timeupdate', () => {
-      if (audio.duration > 0) {
-        const currentProgress = (audio.currentTime / audio.duration) * 100;
-        setProgress(currentProgress);
-        
-        if (readingSessionId && Math.floor(currentProgress) % 10 === 0) {
-          supabase
-            .from('reading_sessions')
-            .update({ 
-              progress_percentage: currentProgress,
-              last_read_at: new Date().toISOString()
-            })
-            .eq('id', readingSessionId)
-            .then();
-        }
-      }
-    });
-
-    audio.addEventListener('ended', async () => {
-      setIsReading(false);
-      setIsPaused(false);
-      setProgress(100);
-      await handleBookCompletion();
-    });
-
-    audio.addEventListener('error', (e) => {
-      console.error('[Audio] Playback error:', e);
-      setIsReading(false);
-      setIsGeneratingAudio(false);
-    });
-  };
-
-  // Helper: Cache audio in background
-  const cacheAudioInBackground = async (audioBase64: string) => {
-    try {
-      const { data: currentData } = await supabase
-        .from('summaries')
-        .select('audio_url')
-        .eq('book_id', bookId)
-        .maybeSingle();
-      
-      let audioCache: Record<string, string> = {};
-      if (currentData?.audio_url) {
-        try {
-          audioCache = JSON.parse(currentData.audio_url);
-        } catch {
-          audioCache = {};
-        }
-      }
-      audioCache[selectedVoice] = audioBase64;
-      
-      await supabase
-        .from('summaries')
-        .update({ audio_url: JSON.stringify(audioCache) })
-        .eq('book_id', bookId);
-      
-      console.log('[Cache] Audio cached for voice:', selectedVoice);
-    } catch (err) {
-      console.error('[Cache] Failed:', err);
-    }
-  };
-
-  // MAIN PLAY HANDLER - Tries all strategies in order
-  const handlePlay = async () => {
-    if (!summary) {
-      toast({
-        title: "No content",
-        description: "No summary available to read",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Unlock audio for iOS on first interaction
-    unlockAudioForIOS();
-
-    await createOrUpdateSession();
-
-    // If paused, resume
-    if (isPaused && audioRef.current) {
-      try {
-        await audioRef.current.play();
-        setIsPaused(false);
-        setIsReading(true);
-        return;
-      } catch (e) {
-        console.error('Resume failed:', e);
-        setIsPaused(false);
-      }
-    }
-
-    // Also check for Web Speech API pause
-    if (isPaused && (window as any).__currentUtterance) {
-      window.speechSynthesis.resume();
-      setIsPaused(false);
-      setIsReading(true);
-      return;
-    }
-
-    // Stop any existing audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-    }
-    if (currentAudioUrlRef.current) {
-      URL.revokeObjectURL(currentAudioUrlRef.current);
-    }
-    window.speechSynthesis?.cancel();
-
-    setIsGeneratingAudio(true);
-    setProgress(0);
-
-    toast({
-      title: "Generating audio...",
-      description: "Trying best available method",
-    });
-
-    // TRY ALL STRATEGIES IN ORDER
-    const strategies = [
-      { name: 'Cached Audio', fn: tryPlayFromCache },
-      { name: 'Azure TTS (invoke)', fn: tryAzureTTSInvoke },
-      { name: 'Azure TTS (fetch)', fn: tryAzureTTSFetch },
-      { name: 'Web Speech API', fn: tryWebSpeechAPI },
-    ];
-
-    for (const strategy of strategies) {
-      console.log(`\n========== Trying: ${strategy.name} ==========`);
-      try {
-        const success = await strategy.fn();
-        if (success) {
-          console.log(`✅ SUCCESS with: ${strategy.name}`);
-          return;
-        }
-        console.log(`❌ ${strategy.name} failed, trying next...`);
-      } catch (err) {
-        console.error(`❌ ${strategy.name} threw error:`, err);
-      }
-    }
-
-    // ALL STRATEGIES FAILED
-    console.error('All TTS strategies failed!');
-    setIsGeneratingAudio(false);
-    toast({
-      title: "Voice Generation Failed",
-      description: "All methods failed. Please check your internet connection and try again.",
-      variant: "destructive",
-    });
-  };
-
-  const handlePause = async () => {
-    // Pause HTML Audio
-    if (isReading && audioRef.current) {
-      audioRef.current.pause();
-      setIsPaused(true);
-      setIsReading(false);
-    }
-    
-    // Pause Web Speech API
-    if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
-      window.speechSynthesis.pause();
-      setIsPaused(true);
-      setIsReading(false);
-    }
-    
-    if (readingSessionId) {
-      await supabase
-        .from('reading_sessions')
-        .update({ 
-          progress_percentage: progress,
-          last_read_at: new Date().toISOString()
-        })
-        .eq('id', readingSessionId);
-    }
-  };
-
-  const handleStop = async () => {
-    // Stop HTML Audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current.src = '';
-      audioRef.current = null;
-    }
-    
-    // Cleanup blob URL
-    if (currentAudioUrlRef.current) {
-      URL.revokeObjectURL(currentAudioUrlRef.current);
-      currentAudioUrlRef.current = null;
-    }
-    
-    // Stop Web Speech API
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    
-    // Clear progress interval if exists
-    if ((window as any).__progressInterval) {
-      clearInterval((window as any).__progressInterval);
-      (window as any).__progressInterval = null;
-    }
-    (window as any).__currentUtterance = null;
-    
-    setIsReading(false);
-    setIsPaused(false);
-    setProgress(0);
-    setIsGeneratingAudio(false);
-    
-    if (readingSessionId) {
-      await supabase
-        .from('reading_sessions')
-        .update({ 
-          progress_percentage: 0,
-          last_read_at: new Date().toISOString()
-        })
-        .eq('id', readingSessionId);
-    }
-  };
-
   const handleBookCompletion = async () => {
     if (hasCompletedRef.current) return;
     
     hasCompletedRef.current = true;
     setIsCompleting(true);
-    
-    if (audioRef.current) {
-      audioRef.current.pause();
+
+    // Stop Web Speech if running
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
     }
-    setIsReading(false);
-    setIsPaused(false);
 
     const bookTitle = book?.title || "the book";
 
@@ -1027,42 +449,6 @@ const ReadBook = () => {
     });
 
     navigate('/dashboard');
-  };
-
-  const handleSeek = async (newProgress: number[]) => {
-    if (!audioRef.current) return;
-    
-    const targetProgress = newProgress[0];
-    
-    if (audioRef.current.duration > 0) {
-      audioRef.current.currentTime = (targetProgress / 100) * audioRef.current.duration;
-    }
-    
-    setProgress(targetProgress);
-    
-    if (targetProgress >= 100) {
-      await handleBookCompletion();
-      return;
-    }
-    
-    if (readingSessionId) {
-      await supabase
-        .from('reading_sessions')
-        .update({ 
-          progress_percentage: targetProgress,
-          last_read_at: new Date().toISOString()
-        })
-        .eq('id', readingSessionId);
-    }
-  };
-
-  const handleSkip = (direction: 'forward' | 'backward') => {
-    const skipAmount = 10;
-    let newProgress = direction === 'forward' 
-      ? Math.min(100, progress + skipAmount)
-      : Math.max(0, progress - skipAmount);
-    
-    handleSeek([newProgress]);
   };
 
   const handleBookmark = async () => {
@@ -1372,116 +758,29 @@ const ReadBook = () => {
           <Card className="glass-morphism p-4 sm:p-6 border-primary/20 overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none" />
             
-            <div className="relative space-y-5">
-              {/* Now Playing Header */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Volume2 className="w-4 h-4 text-primary animate-pulse" />
-                  <span className="text-xs font-medium uppercase tracking-wider">Azure Neural TTS</span>
-                </div>
-              </div>
-
-              {/* Voice Selector */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <span className="text-sm font-medium text-muted-foreground">Voice:</span>
-                <AzureVoiceSelector
-                  selectedVoice={selectedVoice}
-                  onVoiceChange={setSelectedVoice}
-                  disabled={isReading || isGeneratingAudio}
-                />
-              </div>
-
-              {/* Progress Section */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground font-medium">Progress</span>
-                  <span className="font-bold text-primary text-lg">{Math.round(progress)}%</span>
-                </div>
-                
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleSkip('backward')}
-                    className="h-10 w-10 rounded-full hover:bg-primary/10 transition-colors shrink-0"
-                    aria-label="Skip backward 10%"
-                    disabled={progress <= 0 || !audioRef.current}
-                  >
-                    <SkipBack className="w-5 h-5" />
-                  </Button>
-                  
-                  <div className="flex-1 relative touch-pan-x py-2">
-                    <Slider
-                      value={[progress]}
-                      onValueChange={handleSeek}
-                      max={100}
-                      step={1}
-                      className="w-full cursor-pointer"
-                      aria-label="Seek through the audio"
-                      disabled={!audioRef.current}
-                    />
-                  </div>
-                  
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleSkip('forward')}
-                    className="h-10 w-10 rounded-full hover:bg-primary/10 transition-colors shrink-0"
-                    aria-label="Skip forward 10%"
-                    disabled={progress >= 100 || !audioRef.current}
-                  >
-                    <SkipForward className="w-5 h-5" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Main Controls */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center justify-center sm:justify-start gap-3">
-                  {isGeneratingAudio ? (
-                    <Button
-                      size="lg"
-                      disabled
-                      className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary px-8 h-14 rounded-full shadow-lg min-w-[160px]"
-                    >
-                      <Loader2 className="w-6 h-6 animate-spin" />
-                      <span className="text-lg font-semibold">Generating...</span>
-                    </Button>
-                  ) : isPaused || !isReading ? (
-                    <Button
-                      size="lg"
-                      onClick={handlePlay}
-                      className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 transition-all px-8 h-14 rounded-full shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 min-w-[160px]"
-                      aria-label={isPaused ? 'Resume reading' : 'Start reading'}
-                    >
-                      <Play className="w-6 h-6 fill-current" />
-                      <span className="text-lg font-semibold">{isPaused ? 'Resume' : 'Play'}</span>
-                    </Button>
-                  ) : (
-                    <Button
-                      size="lg"
-                      variant="secondary"
-                      onClick={handlePause}
-                      className="gap-3 px-8 h-14 rounded-full shadow-md hover:shadow-lg hover:scale-105 active:scale-95 min-w-[160px] bg-secondary/20 hover:bg-secondary/30 border border-secondary/30"
-                      aria-label="Pause reading"
-                    >
-                      <Pause className="w-6 h-6" />
-                      <span className="text-lg font-semibold">Pause</span>
-                    </Button>
-                  )}
-                  
-                  {(isReading || isPaused || progress > 0) && progress < 100 && (
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={handleStop}
-                      className="h-12 w-12 rounded-full hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive transition-all"
-                      aria-label="Stop and reset"
-                    >
-                      <StopCircle className="w-5 h-5" />
-                    </Button>
-                  )}
-                  
+            <div className="relative">
+              <AudioPlayerCard
+                bookId={bookId}
+                summary={summary}
+                onProgress={async (prog) => {
+                  setProgress(prog);
+                  if (readingSessionId && Math.floor(prog) % 10 === 0) {
+                    await supabase
+                      .from('reading_sessions')
+                      .update({ 
+                        progress_percentage: prog,
+                        last_read_at: new Date().toISOString()
+                      })
+                      .eq('id', readingSessionId);
+                  }
+                }}
+                onComplete={handleBookCompletion}
+                readingSessionId={readingSessionId}
+              />
+              
+              {/* Complete & Secondary Controls */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-5 pt-5 border-t border-border/30">
+                <div className="flex items-center justify-center sm:justify-start">
                   {progress >= 100 && !isCompleting && (
                     <Button
                       size="lg"

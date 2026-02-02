@@ -1,5 +1,8 @@
 project_id = "rldrcongresqaqbebceb"
 
+[functions.generate-audio-chunks]
+verify_jwt = false
+
 [functions.search-book-pdf]
 verify_jwt = false
 
