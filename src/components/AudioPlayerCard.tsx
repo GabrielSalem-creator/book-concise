@@ -7,6 +7,14 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import AzureVoiceSelector from '@/components/AzureVoiceSelector';
 
+const FALLBACK_AFTER_MS = 4500;
+const CHUNK_POLL_INTERVAL_MS = 900;
+const AUDIO_START_TIMEOUT_MS = 4000;
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 interface AudioPlayerCardProps {
   bookId: string | undefined;
   summary: string;
@@ -70,6 +78,49 @@ export default function AudioPlayerCard({
       blobUrlRef.current = null;
     }
     window.speechSynthesis?.cancel();
+  }, []);
+
+  const getSelectedLang = useCallback(() => {
+    // en-US-AvaNeural -> en-US
+    const m = selectedVoice.match(/^[a-z]{2}-[A-Z]{2}/);
+    return m?.[0] ?? 'en-US';
+  }, [selectedVoice]);
+
+  const waitForVoices = useCallback(async (timeoutMs = 1200) => {
+    if (!('speechSynthesis' in window)) return [] as SpeechSynthesisVoice[];
+    const synth = window.speechSynthesis;
+
+    const initial = synth.getVoices();
+    if (initial.length > 0) return initial;
+
+    return await new Promise<SpeechSynthesisVoice[]>((resolve) => {
+      let done = false;
+
+      const finish = () => {
+        if (done) return;
+        done = true;
+        synth.removeEventListener?.('voiceschanged', onChanged as any);
+        resolve(synth.getVoices());
+      };
+
+      const onChanged = () => finish();
+      synth.addEventListener?.('voiceschanged', onChanged as any);
+
+      window.setTimeout(() => finish(), timeoutMs);
+    });
+  }, []);
+
+  const pickGoogleVoice = useCallback((voices: SpeechSynthesisVoice[], lang: string) => {
+    const matchesLang = (v: SpeechSynthesisVoice) =>
+      (v.lang || '').toLowerCase().startsWith(lang.toLowerCase());
+
+    // Prefer Google voices (Chrome: "Google US English", Android WebView often).
+    return (
+      voices.find((v) => matchesLang(v) && /google/i.test(v.name)) ||
+      voices.find((v) => matchesLang(v)) ||
+      voices.find((v) => /google/i.test(v.name)) ||
+      voices[0]
+    );
   }, []);
 
   // Load chunks for the selected voice
@@ -226,13 +277,23 @@ export default function AudioPlayerCard({
 
     window.speechSynthesis.cancel();
 
+    // Important: on some browsers voices load async; wait a beat before picking.
+    const lang = getSelectedLang();
+
     const utterance = new SpeechSynthesisUtterance(summary);
+    utterance.lang = lang;
     utterance.rate = parseFloat(playbackRate);
     utterance.pitch = 1.0;
 
-    const voices = window.speechSynthesis.getVoices();
-    const englishVoice = voices.find(v => v.lang.startsWith('en'));
-    if (englishVoice) utterance.voice = englishVoice;
+    // Ensure we don't get stuck in "Loading..." if Web Speech doesn't fire onstart.
+    setIsLoading(false);
+
+    void (async () => {
+      const voices = await waitForVoices();
+      const preferred = pickGoogleVoice(voices, lang);
+      if (preferred) utterance.voice = preferred;
+      window.speechSynthesis.speak(utterance);
+    })();
 
     utterance.onstart = () => {
       setIsPlaying(true);
@@ -261,9 +322,26 @@ export default function AudioPlayerCard({
 
     (window as any).__speechInterval = interval;
     (window as any).__utterance = utterance;
+  }, [getSelectedLang, onComplete, onProgress, pickGoogleVoice, playbackRate, summary, toast, waitForVoices]);
 
-    window.speechSynthesis.speak(utterance);
-  }, [summary, playbackRate, onProgress, onComplete, toast]);
+  const pollChunksUntilReady = useCallback(async (timeoutMs: number) => {
+    if (!bookId) return null as null | { chunk_index: number; audio_base64: string }[];
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const { data, error } = await supabase.functions.invoke('generate-audio-chunks', {
+        body: { action: 'getChunks', bookId, voiceName: selectedVoice },
+      });
+
+      if (!error && data?.chunks?.length) {
+        return data.chunks as { chunk_index: number; audio_base64: string }[];
+      }
+
+      await sleep(CHUNK_POLL_INTERVAL_MS);
+    }
+
+    return null;
+  }, [bookId, selectedVoice]);
 
   // Main play handler
   const handlePlay = async () => {
@@ -296,34 +374,40 @@ export default function AudioPlayerCard({
 
     // Try chunked audio first
     if (!chunksLoaded || chunks.length === 0) {
-      const loaded = await loadChunks();
-      if (!loaded) {
-        toast({
-          title: 'Generating Audio...',
-          description: 'Using fallback voice while chunks generate',
-        });
-        playWithWebSpeech();
-        return;
-      }
-      // Re-fetch chunks after potential generation
-      const { data } = await supabase.functions.invoke('generate-audio-chunks', {
-        body: { action: 'getChunks', bookId, voiceName: selectedVoice }
-      });
-      if (data?.chunks?.length > 0) {
-        setChunks(data.chunks);
-        setTotalChunks(data.chunks.length);
+      // 1) First quick attempt
+      await loadChunks();
+
+      // 2) Give generation a few seconds (poll) before falling back
+      const polled = await pollChunksUntilReady(FALLBACK_AFTER_MS);
+      if (polled?.length) {
+        setChunks(polled);
+        setTotalChunks(polled.length);
         setChunksLoaded(true);
       } else {
+        toast({
+          title: 'Generating audio…',
+          description: 'Playing with Google voice while Azure chunks generate.',
+        });
         playWithWebSpeech();
         return;
       }
     }
 
     // Play from current chunk (or start)
-    const success = await playChunk(currentChunkIndex);
-    if (!success) {
+    const playPromise = playChunk(currentChunkIndex);
+    const timedOut = await Promise.race([
+      playPromise.then(() => false).catch(() => false),
+      sleep(AUDIO_START_TIMEOUT_MS).then(() => true),
+    ]);
+
+    if (timedOut) {
+      console.warn('[AudioPlayer] Chunk playback start timed out; falling back to Web Speech');
       playWithWebSpeech();
+      return;
     }
+
+    const success = await playPromise;
+    if (!success) playWithWebSpeech();
   };
 
   const handlePause = () => {
