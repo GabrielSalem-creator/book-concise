@@ -8,14 +8,14 @@ type Options = {
 };
 
 /**
- * Slowly pre-generates Azure audio for ALL summaries by repeatedly calling
- * the `generate-audio-background` edge function with `{ action: 'processOne' }`.
+ * Slowly pre-generates Azure audio CHUNKS for ALL summaries by repeatedly calling
+ * the `generate-audio-chunks` edge function with `{ action: 'processNext' }`.
  *
  * This runs client-side (no cron required) and is safe to stop/restart.
  */
 export function useBackgroundAudioGenerator({
   enabled,
-  intervalMs = 45_000,
+  intervalMs = 60_000, // 60s default for chunked approach
 }: Options) {
   const runningRef = useRef(false);
   const timeoutRef = useRef<number | null>(null);
@@ -42,37 +42,38 @@ export function useBackgroundAudioGenerator({
       runningRef.current = true;
       try {
         const { data, error } = await supabase.functions.invoke(
-          "generate-audio-background",
+          "generate-audio-chunks",
           {
-            body: { action: "processOne" },
+            body: { action: "processNext" },
           }
         );
 
         // If the function errors, back off more aggressively.
         if (error) {
-          console.warn("[BG-AUDIO][client] processOne error:", error);
-          scheduleNext(Math.max(intervalMs * 2, 90_000));
+          console.warn("[BG-CHUNKS][client] processNext error:", error);
+          scheduleNext(Math.max(intervalMs * 2, 120_000));
           return;
         }
 
-        // When done, stop scheduling.
-        if (data?.done || data?.remaining === 0) {
-          console.log("[BG-AUDIO][client] All summaries already have audio.");
+        // When done, slow down polling significantly
+        if (data?.done) {
+          console.log("[BG-CHUNKS][client] All chunks generated.");
+          scheduleNext(300_000); // Check again in 5 mins
           return;
         }
 
-        // Normal pacing.
+        // Normal pacing
         scheduleNext(intervalMs);
       } catch (e) {
-        console.warn("[BG-AUDIO][client] processOne exception:", e);
-        scheduleNext(Math.max(intervalMs * 2, 90_000));
+        console.warn("[BG-CHUNKS][client] processNext exception:", e);
+        scheduleNext(Math.max(intervalMs * 2, 120_000));
       } finally {
         runningRef.current = false;
       }
     };
 
     // Start shortly after login to avoid competing with initial page loads.
-    scheduleNext(10_000);
+    scheduleNext(15_000);
 
     return () => {
       cancelled = true;
@@ -80,3 +81,4 @@ export function useBackgroundAudioGenerator({
     };
   }, [enabled, intervalMs]);
 }
+
