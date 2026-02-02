@@ -36,9 +36,8 @@ const ReadBook = () => {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
-      if ((window as any).__progressInterval) {
-        clearInterval((window as any).__progressInterval);
-      }
+      if ((window as any).__progressInterval) clearInterval((window as any).__progressInterval);
+      if ((window as any).__speechInterval) clearInterval((window as any).__speechInterval);
     };
   }, []);
 
