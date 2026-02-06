@@ -84,38 +84,62 @@ export default function AudioPlayerCard({
     }
   }, []);
 
-  // Trigger generation on the backend
+  // Trigger generation on the backend (fire-and-forget for iOS compatibility)
   const triggerGeneration = useCallback(async () => {
     if (!bookId) return;
-    console.log('[AudioPlayer] Triggering generation for', bookId, selectedVoice);
+    console.log('[AudioPlayer] Triggering background generation for', bookId, selectedVoice);
     try {
-      await supabase.functions.invoke('generate-audio-chunks', {
-        body: {
-          action: 'generate',
-          bookId,
-          voiceName: selectedVoice,
-          // Fallback: if the summary isn't persisted server-side yet, send it.
-          summaryText: summary,
+      // Fire-and-forget: the backend will process in background
+      const response = await fetch(
+        `https://rldrcongresqaqbebceb.supabase.co/functions/v1/generate-audio-chunks`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'generate',
+            bookId,
+            voiceName: selectedVoice,
+            summaryText: summary,
+          }),
         }
-      });
+      );
+      const data = await response.json();
+      console.log('[AudioPlayer] Generation response:', data);
     } catch (err) {
       console.error('[AudioPlayer] Trigger generation error:', err);
     }
   }, [bookId, selectedVoice, summary]);
 
-  // Load chunks for the selected voice (single attempt)
+  // Load chunks for the selected voice (using direct fetch for iOS compatibility)
   const fetchChunks = useCallback(async (): Promise<{ chunk_index: number; audio_base64: string }[] | null> => {
     if (!bookId) return null;
 
     try {
-      const { data, error } = await supabase.functions.invoke('generate-audio-chunks', {
-        body: { action: 'getChunks', bookId, voiceName: selectedVoice }
-      });
+      const response = await fetch(
+        `https://rldrcongresqaqbebceb.supabase.co/functions/v1/generate-audio-chunks`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'getChunks',
+            bookId,
+            voiceName: selectedVoice,
+          }),
+        }
+      );
 
-      if (error) {
-        console.error('[AudioPlayer] Error fetching chunks:', error);
+      if (!response.ok) {
+        console.error('[AudioPlayer] Fetch chunks failed:', response.status);
         return null;
       }
+
+      const data = await response.json();
 
       if (data?.chunks && data.chunks.length > 0) {
         console.log('[AudioPlayer] Fetched', data.chunks.length, 'chunks');
@@ -129,11 +153,39 @@ export default function AudioPlayerCard({
     }
   }, [bookId, selectedVoice]);
 
-  // Poll until chunks are ready (with progress updates)
+  // Check generation status (lightweight polling)
+  const checkStatus = useCallback(async (): Promise<{ ready: boolean; existingChunks: number; totalChunks: number } | null> => {
+    if (!bookId) return null;
+
+    try {
+      const response = await fetch(
+        `https://rldrcongresqaqbebceb.supabase.co/functions/v1/generate-audio-chunks`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'checkStatus',
+            bookId,
+            voiceName: selectedVoice,
+          }),
+        }
+      );
+
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }, [bookId, selectedVoice]);
+
+  // Poll until chunks are ready (with progress updates using lightweight checkStatus)
   const pollChunksUntilReady = useCallback(async (): Promise<{ chunk_index: number; audio_base64: string }[] | null> => {
     if (!bookId) return null;
 
-    // First trigger generation
+    // First trigger generation (fire-and-forget)
     await triggerGeneration();
 
     const startTime = Date.now();
@@ -143,12 +195,26 @@ export default function AudioPlayerCard({
       if (!isMountedRef.current) return null;
 
       attempt++;
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-      setLoadingMessage(`Generating audio... (${elapsed}s)`);
+      
+      // Use lightweight status check first
+      const status = await checkStatus();
+      
+      if (status) {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        if (status.totalChunks > 0) {
+          setLoadingMessage(`Generating... ${status.existingChunks}/${status.totalChunks} (${elapsed}s)`);
+        } else {
+          setLoadingMessage(`Generating audio... (${elapsed}s)`);
+        }
 
-      const fetchedChunks = await fetchChunks();
-      if (fetchedChunks && fetchedChunks.length > 0) {
-        return fetchedChunks;
+        // If ready, fetch the actual chunks
+        if (status.ready && status.existingChunks > 0) {
+          console.log('[AudioPlayer] Chunks ready, fetching...');
+          const fetchedChunks = await fetchChunks();
+          if (fetchedChunks && fetchedChunks.length > 0) {
+            return fetchedChunks;
+          }
+        }
       }
 
       console.log(`[AudioPlayer] Poll attempt ${attempt}, waiting...`);
@@ -156,7 +222,7 @@ export default function AudioPlayerCard({
     }
 
     return null;
-  }, [bookId, triggerGeneration, fetchChunks]);
+  }, [bookId, triggerGeneration, checkStatus, fetchChunks]);
 
   // Reload chunks when voice changes (passive load, no polling)
   useEffect(() => {
