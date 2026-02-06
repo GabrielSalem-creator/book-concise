@@ -164,16 +164,23 @@ async function processBookChunks(
     if (audioBase64) {
       const { error } = await supabase
         .from('summary_audio_chunks')
-        .insert({
-          summary_id: summaryId,
-          book_id: bookId,
-          voice_name: voiceName,
-          chunk_index: i,
-          audio_base64: audioBase64,
-        });
+        // Race-safe: multiple generators can run concurrently; ignore duplicates via upsert.
+        .upsert(
+          {
+            summary_id: summaryId,
+            book_id: bookId,
+            voice_name: voiceName,
+            chunk_index: i,
+            audio_base64: audioBase64,
+          },
+          {
+            onConflict: 'summary_id,voice_name,chunk_index',
+            ignoreDuplicates: true,
+          }
+        );
 
       if (error) {
-        console.error(`[CHUNK-AUDIO] Insert error for chunk ${i}:`, error);
+        console.error(`[CHUNK-AUDIO] Upsert error for chunk ${i}:`, error);
       } else {
         generated++;
         console.log(`[CHUNK-AUDIO] Saved chunk ${i}/${chunks.length - 1}`);
