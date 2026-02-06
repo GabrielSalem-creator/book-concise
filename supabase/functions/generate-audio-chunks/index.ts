@@ -1,11 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.0';
 
+// iOS-compatible CORS headers - extra permissive for WebView environments
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept, cache-control, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  'Access-Control-Allow-Headers': '*',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
   'Access-Control-Max-Age': '86400',
+  'Access-Control-Expose-Headers': 'Content-Length, Content-Type',
+  // Prevent iOS caching issues
+  'Cache-Control': 'no-cache, no-store, must-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
 };
 
 const CHUNK_SIZE = 2000; // ~2000 characters per chunk for faster generation
@@ -201,8 +207,20 @@ declare const EdgeRuntime: {
 };
 
 serve(async (req) => {
+  // iOS WebViews need explicit CORS preflight handling
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { 
+      status: 200,
+      headers: corsHeaders 
+    });
+  }
+  
+  // For iOS: Also handle GET requests (some WebViews send GET instead of POST for preflight)
+  if (req.method === 'GET') {
+    return new Response(
+      JSON.stringify({ status: 'ok', message: 'Audio chunk generator ready' }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   try {
@@ -222,6 +240,54 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const body = await req.json().catch(() => ({}));
     const { bookId, voiceName, action } = body;
+
+    // Action: Check generation status (lightweight - no audio data)
+    if (action === 'checkStatus') {
+      if (!bookId) {
+        return new Response(
+          JSON.stringify({ error: "bookId is required" }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const voice = voiceName || FEMALE_VOICE;
+
+      // Get summary to know expected chunks
+      const { data: summaries } = await supabase
+        .from('summaries')
+        .select('id, content')
+        .eq('book_id', bookId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const summary = summaries?.[0];
+      if (!summary) {
+        return new Response(
+          JSON.stringify({ ready: false, existingChunks: 0, totalChunks: 0, status: 'no_summary' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const expectedChunks = splitIntoChunks(summary.content, CHUNK_SIZE).length;
+
+      const { data: existingChunks } = await supabase
+        .from('summary_audio_chunks')
+        .select('chunk_index')
+        .eq('summary_id', summary.id)
+        .eq('voice_name', voice);
+
+      const ready = (existingChunks?.length || 0) >= expectedChunks;
+
+      return new Response(
+        JSON.stringify({ 
+          ready,
+          existingChunks: existingChunks?.length || 0,
+          totalChunks: expectedChunks,
+          status: ready ? 'ready' : 'generating',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Action: Get chunks for a book/voice
     if (action === 'getChunks') {
