@@ -262,6 +262,9 @@ serve(async (req) => {
     // Action: Generate chunks for a book
     if (action === 'generate' && bookId) {
       // Get summary (use limit(1) to handle multiple summaries for same book)
+      // If there is no persisted summary yet, we can fall back to summaryText sent by the client.
+      const { summaryText } = body as { summaryText?: string };
+
       const { data: summaries, error: summaryError } = await supabase
         .from('summaries')
         .select('id, content')
@@ -269,15 +272,35 @@ serve(async (req) => {
         .order('created_at', { ascending: false })
         .limit(1);
 
-      if (summaryError || !summaries || summaries.length === 0) {
+      let summary = summaries?.[0];
+
+      if ((summaryError || !summary) && summaryText && summaryText.trim().length > 0) {
+        console.log('[CHUNK-AUDIO] No saved summary found; creating one from summaryText');
+
+        const { data: inserted, error: insertError } = await supabase
+          .from('summaries')
+          .insert({
+            book_id: bookId,
+            content: summaryText,
+            is_public: true,
+          })
+          .select('id, content')
+          .single();
+
+        if (insertError) {
+          console.error('[CHUNK-AUDIO] Failed to create fallback summary:', insertError);
+        } else {
+          summary = inserted;
+        }
+      }
+
+      if (!summary) {
         console.error('[CHUNK-AUDIO] Summary error:', summaryError);
         return new Response(
           JSON.stringify({ error: "Summary not found for this book" }),
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-
-      const summary = summaries[0];
 
       const voice = voiceName || FEMALE_VOICE;
 

@@ -90,12 +90,18 @@ export default function AudioPlayerCard({
     console.log('[AudioPlayer] Triggering generation for', bookId, selectedVoice);
     try {
       await supabase.functions.invoke('generate-audio-chunks', {
-        body: { action: 'generate', bookId, voiceName: selectedVoice }
+        body: {
+          action: 'generate',
+          bookId,
+          voiceName: selectedVoice,
+          // Fallback: if the summary isn't persisted server-side yet, send it.
+          summaryText: summary,
+        }
       });
     } catch (err) {
       console.error('[AudioPlayer] Trigger generation error:', err);
     }
-  }, [bookId, selectedVoice]);
+  }, [bookId, selectedVoice, summary]);
 
   // Load chunks for the selected voice (single attempt)
   const fetchChunks = useCallback(async (): Promise<{ chunk_index: number; audio_base64: string }[] | null> => {
