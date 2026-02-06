@@ -1,11 +1,35 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Shield, Database, Eye, Lock, Mail, Trash2, Globe } from 'lucide-react';
+import { ArrowLeft, Shield, Database, Eye, Lock, Mail, Trash2, Globe, MessageCircle, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { toast } from '@/hooks/use-toast';
 
 const Privacy = () => {
   const navigate = useNavigate();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmitSupport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim() || !message.trim()) {
+      toast({ title: 'Please fill in all fields', variant: 'destructive' });
+      return;
+    }
+    setIsSubmitting(true);
+    // Simulate sending - in production, connect to an email service or support system
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    toast({ title: 'Message sent!', description: 'We will get back to you within 48 hours.' });
+    setName('');
+    setEmail('');
+    setMessage('');
+    setIsSubmitting(false);
+  };
 
   const sections = [
     {
@@ -55,14 +79,6 @@ const Privacy = () => {
         "**Delete**: Request complete deletion of your account and all associated data.",
         "**Export**: Download your reading history and preferences.",
         "**Opt-out**: Disable analytics tracking in your account settings."
-      ]
-    },
-    {
-      icon: Mail,
-      title: "Contact Us",
-      content: [
-        "For privacy questions or data requests, contact us through the app's feedback feature or your account settings.",
-        "We respond to all privacy inquiries within 30 days."
       ]
     }
   ];
@@ -135,6 +151,88 @@ const Privacy = () => {
             </Card>
           ))}
         </div>
+
+        <Separator className="my-6 sm:my-8" />
+
+        {/* Contact Support Section */}
+        <Card className="p-4 sm:p-6 border-primary/20">
+          <div className="flex items-start gap-3 sm:gap-4 mb-4">
+            <div className="p-2 sm:p-2.5 rounded-lg bg-primary/10 shrink-0">
+              <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-semibold text-foreground">
+                Contact Support
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Have questions or need assistance? Send us a message and we'll get back to you within 48 hours.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmitSupport} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-foreground mb-1.5">
+                  Your Name
+                </label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="John Doe"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="bg-background"
+                />
+              </div>
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">
+                  Email Address
+                </label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-background"
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="message" className="block text-sm font-medium text-foreground mb-1.5">
+                Your Message
+              </label>
+              <Textarea
+                id="message"
+                placeholder="How can we help you?"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                className="bg-background min-h-[120px]"
+              />
+            </div>
+            <Button 
+              type="submit" 
+              className="w-full sm:w-auto"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                'Sending...'
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Send Message
+                </>
+              )}
+            </Button>
+          </form>
+
+          <div className="mt-4 pt-4 border-t border-border">
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              You can also reach us at <a href="mailto:support@nocturnlb.info" className="text-primary hover:underline">support@nocturnlb.info</a>
+            </p>
+          </div>
+        </Card>
 
         <Separator className="my-6 sm:my-8" />
 
