@@ -68,7 +68,7 @@ const Privacy = () => {
       content: [
         "**Supabase**: Database and authentication (privacy policy: supabase.com/privacy)",
         "**AI Services**: Book summaries are generated using secure AI APIs - text is processed but not stored by AI providers.",
-        "**Azure TTS**: Text-to-speech for audio narration - audio is generated on-demand and not retained."
+        "**Text-to-Speech**: Audio narration uses your browser's built-in speech synthesis - no data is sent externally."
       ]
     },
     {

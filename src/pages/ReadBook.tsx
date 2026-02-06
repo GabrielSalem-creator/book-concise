@@ -27,9 +27,6 @@ const ReadBook = () => {
   const [isSearchingPdf, setIsSearchingPdf] = useState(false);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
 
-  // Prevent spamming background chunk generation calls
-  const hasTriggeredChunkGenRef = useRef(false);
-
   // Cleanup Web Speech API on unmount
   useEffect(() => {
     return () => {
@@ -64,28 +61,7 @@ const ReadBook = () => {
     }
   }, [book?.id, book?.pdf_url, isLoading]);
 
-  // Auto-trigger chunk generation once we have a summary
-  useEffect(() => {
-    if (!user || !bookId) return;
-    if (!summary || isLoading) return;
-    if (hasTriggeredChunkGenRef.current) return;
-
-    const run = async () => {
-      try {
-        hasTriggeredChunkGenRef.current = true;
-        // Fire-and-forget chunk generation for both voices
-        await supabase.functions.invoke("generate-audio-chunks", {
-          body: { action: 'generate', bookId, voiceName: 'en-US-AvaNeural' }
-        });
-        console.log("[CHUNKS][ReadBook] Triggered chunk generation");
-      } catch (e) {
-        console.warn("[CHUNKS][ReadBook] Failed to trigger:", e);
-        hasTriggeredChunkGenRef.current = false;
-      }
-    };
-
-    void run();
-  }, [user, bookId, summary, isLoading]);
+  // No longer need to trigger audio chunk generation - using Web Speech API now
 
   // Auto-complete when progress reaches 100%
   useEffect(() => {

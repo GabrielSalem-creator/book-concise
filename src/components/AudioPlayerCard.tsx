@@ -1,19 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, StopCircle, SkipBack, SkipForward, Volume2, Loader2, Settings2, RefreshCw } from 'lucide-react';
+import { Play, Pause, StopCircle, Volume2, Loader2, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import AzureVoiceSelector from '@/components/AzureVoiceSelector';
-
-// Longer timeout: poll for up to 30 seconds before showing error
-const MAX_POLL_TIME_MS = 30000;
-const CHUNK_POLL_INTERVAL_MS = 1500;
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+import VoiceSelector from '@/components/VoiceSelector';
 
 interface AudioPlayerCardProps {
   bookId: string | undefined;
@@ -34,38 +25,61 @@ const SPEED_OPTIONS = [
 ];
 
 export default function AudioPlayerCard({
-  bookId,
   summary,
   onProgress,
   onComplete,
-  readingSessionId,
 }: AudioPlayerCardProps) {
   const { toast } = useToast();
 
-  // Audio state
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('Loading...');
   const [progress, setProgress] = useState(0);
   const [playbackRate, setPlaybackRate] = useState('1');
-  const [selectedVoice, setSelectedVoice] = useState('en-US-AvaNeural');
-  const [error, setError] = useState<string | null>(null);
+  const [selectedVoice, setSelectedVoice] = useState('');
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 
-  // Chunk-based state
-  const [chunks, setChunks] = useState<{ chunk_index: number; audio_base64: string }[]>([]);
-  const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
-  const [chunksLoaded, setChunksLoaded] = useState(false);
-  const [totalChunks, setTotalChunks] = useState(0);
-
-  // Refs
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const blobUrlRef = useRef<string | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const startTimeRef = useRef<number>(0);
+  const progressIntervalRef = useRef<number | null>(null);
   const isMountedRef = useRef(true);
 
-  // Cleanup on unmount
+  // Load voices on mount
   useEffect(() => {
     isMountedRef.current = true;
+
+    const loadVoices = () => {
+      if (!('speechSynthesis' in window)) return;
+      
+      const availableVoices = window.speechSynthesis.getVoices();
+      if (availableVoices.length > 0) {
+        const englishVoices = availableVoices
+          .filter(v => v.lang.startsWith('en'))
+          .sort((a, b) => {
+            const aGoogle = a.name.toLowerCase().includes('google');
+            const bGoogle = b.name.toLowerCase().includes('google');
+            if (aGoogle && !bGoogle) return -1;
+            if (!aGoogle && bGoogle) return 1;
+            return a.name.localeCompare(b.name);
+          });
+
+        setVoices(englishVoices.length > 0 ? englishVoices : availableVoices);
+
+        if (!selectedVoice) {
+          const googleVoice = englishVoices.find(v => 
+            v.name.toLowerCase().includes('google') && v.lang === 'en-US'
+          );
+          setSelectedVoice((googleVoice || englishVoices[0] || availableVoices[0])?.name || '');
+        }
+      }
+    };
+
+    loadVoices();
+    
+    if ('speechSynthesis' in window && window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
     return () => {
       isMountedRef.current = false;
       cleanup();
@@ -73,386 +87,157 @@ export default function AudioPlayerCard({
   }, []);
 
   const cleanup = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-      audioRef.current = null;
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
     }
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current);
-      blobUrlRef.current = null;
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
     }
+    utteranceRef.current = null;
   }, []);
 
-  // Trigger generation on the backend (fire-and-forget for iOS compatibility)
-  const triggerGeneration = useCallback(async () => {
-    if (!bookId) return;
-    console.log('[AudioPlayer] Triggering background generation for', bookId, selectedVoice);
-    try {
-      // Fire-and-forget: the backend will process in background
-      const response = await fetch(
-        `https://rldrcongresqaqbebceb.supabase.co/functions/v1/generate-audio-chunks`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'generate',
-            bookId,
-            voiceName: selectedVoice,
-            summaryText: summary,
-          }),
-        }
-      );
-      const data = await response.json();
-      console.log('[AudioPlayer] Generation response:', data);
-    } catch (err) {
-      console.error('[AudioPlayer] Trigger generation error:', err);
-    }
-  }, [bookId, selectedVoice, summary]);
+  // Estimate duration: ~150 words per minute
+  const estimateDuration = (text: string, rate: number): number => {
+    const words = text.split(/\s+/).length;
+    return (words / 150 / rate) * 60 * 1000;
+  };
 
-  // Load chunks for the selected voice (using direct fetch for iOS compatibility)
-  const fetchChunks = useCallback(async (): Promise<{ chunk_index: number; audio_base64: string }[] | null> => {
-    if (!bookId) return null;
-
-    try {
-      const response = await fetch(
-        `https://rldrcongresqaqbebceb.supabase.co/functions/v1/generate-audio-chunks`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'getChunks',
-            bookId,
-            voiceName: selectedVoice,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        console.error('[AudioPlayer] Fetch chunks failed:', response.status);
-        return null;
-      }
-
-      const data = await response.json();
-
-      if (data?.chunks && data.chunks.length > 0) {
-        console.log('[AudioPlayer] Fetched', data.chunks.length, 'chunks');
-        return data.chunks;
-      }
-
-      return null;
-    } catch (err) {
-      console.error('[AudioPlayer] Fetch failed:', err);
-      return null;
-    }
-  }, [bookId, selectedVoice]);
-
-  // Check generation status (lightweight polling)
-  const checkStatus = useCallback(async (): Promise<{ ready: boolean; existingChunks: number; totalChunks: number } | null> => {
-    if (!bookId) return null;
-
-    try {
-      const response = await fetch(
-        `https://rldrcongresqaqbebceb.supabase.co/functions/v1/generate-audio-chunks`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'checkStatus',
-            bookId,
-            voiceName: selectedVoice,
-          }),
-        }
-      );
-
-      if (!response.ok) return null;
-      return await response.json();
-    } catch {
-      return null;
-    }
-  }, [bookId, selectedVoice]);
-
-  // Poll until chunks are ready (with progress updates using lightweight checkStatus)
-  const pollChunksUntilReady = useCallback(async (): Promise<{ chunk_index: number; audio_base64: string }[] | null> => {
-    if (!bookId) return null;
-
-    // First trigger generation (fire-and-forget)
-    await triggerGeneration();
-
-    const startTime = Date.now();
-    let attempt = 0;
-
-    while (Date.now() - startTime < MAX_POLL_TIME_MS) {
-      if (!isMountedRef.current) return null;
-
-      attempt++;
-      
-      // Use lightweight status check first
-      const status = await checkStatus();
-      
-      if (status) {
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
-        if (status.totalChunks > 0) {
-          setLoadingMessage(`Generating... ${status.existingChunks}/${status.totalChunks} (${elapsed}s)`);
-        } else {
-          setLoadingMessage(`Generating audio... (${elapsed}s)`);
-        }
-
-        // If ready, fetch the actual chunks
-        if (status.ready && status.existingChunks > 0) {
-          console.log('[AudioPlayer] Chunks ready, fetching...');
-          const fetchedChunks = await fetchChunks();
-          if (fetchedChunks && fetchedChunks.length > 0) {
-            return fetchedChunks;
-          }
-        }
-      }
-
-      console.log(`[AudioPlayer] Poll attempt ${attempt}, waiting...`);
-      await sleep(CHUNK_POLL_INTERVAL_MS);
-    }
-
-    return null;
-  }, [bookId, triggerGeneration, checkStatus, fetchChunks]);
-
-  // Reload chunks when voice changes (passive load, no polling)
-  useEffect(() => {
-    if (bookId && !isPlaying && !isLoading) {
-      setChunksLoaded(false);
-      setChunks([]);
-      setError(null);
-      
-      // Quick check if chunks exist
-      fetchChunks().then(c => {
-        if (c && c.length > 0 && isMountedRef.current) {
-          setChunks(c);
-          setTotalChunks(c.length);
-          setChunksLoaded(true);
-        }
+  const handlePlay = useCallback(() => {
+    if (!('speechSynthesis' in window)) {
+      toast({
+        title: 'Not Supported',
+        description: 'Text-to-speech is not supported in this browser',
+        variant: 'destructive',
       });
+      return;
     }
-  }, [selectedVoice, bookId]);
 
-  // Play a specific chunk
-  const playChunk = useCallback(async (chunkIndex: number): Promise<boolean> => {
-    if (chunkIndex >= chunks.length) {
-      console.log('[AudioPlayer] All chunks finished');
+    if (!summary) {
+      toast({
+        title: 'No Content',
+        description: 'No summary to read',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Resume if paused
+    if (isPaused) {
+      window.speechSynthesis.resume();
+      setIsPlaying(true);
+      setIsPaused(false);
+      
+      // Restart progress tracking
+      const rate = parseFloat(playbackRate);
+      const estimatedDuration = estimateDuration(summary, rate);
+      startTimeRef.current = Date.now() - (progress / 100) * estimatedDuration;
+      
+      progressIntervalRef.current = window.setInterval(() => {
+        if (!isMountedRef.current) return;
+        const elapsed = Date.now() - startTimeRef.current;
+        const currentProgress = Math.min((elapsed / estimatedDuration) * 100, 99);
+        setProgress(currentProgress);
+        onProgress?.(currentProgress);
+      }, 500);
+      return;
+    }
+
+    // Start fresh
+    cleanup();
+    setIsLoading(true);
+    setProgress(0);
+
+    const utterance = new SpeechSynthesisUtterance(summary);
+    utteranceRef.current = utterance;
+
+    // Set voice
+    const voice = voices.find(v => v.name === selectedVoice);
+    if (voice) {
+      utterance.voice = voice;
+    }
+
+    utterance.rate = parseFloat(playbackRate);
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    const rate = parseFloat(playbackRate);
+    const estimatedDuration = estimateDuration(summary, rate);
+
+    utterance.onstart = () => {
+      if (!isMountedRef.current) return;
+      setIsLoading(false);
+      setIsPlaying(true);
+      setIsPaused(false);
+      startTimeRef.current = Date.now();
+
+      progressIntervalRef.current = window.setInterval(() => {
+        if (!isMountedRef.current) return;
+        const elapsed = Date.now() - startTimeRef.current;
+        const currentProgress = Math.min((elapsed / estimatedDuration) * 100, 99);
+        setProgress(currentProgress);
+        onProgress?.(currentProgress);
+      }, 500);
+    };
+
+    utterance.onend = () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      if (!isMountedRef.current) return;
       setIsPlaying(false);
       setIsPaused(false);
       setProgress(100);
       onComplete?.();
-      return false;
-    }
+    };
 
-    const chunk = chunks[chunkIndex];
-    if (!chunk?.audio_base64) {
-      console.error('[AudioPlayer] Invalid chunk at', chunkIndex);
-      // Try next
-      return playChunk(chunkIndex + 1);
-    }
-
-    // Cleanup previous
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-    }
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current);
-    }
-
-    try {
-      const binaryString = atob(chunk.audio_base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+    utterance.onerror = (event) => {
+      console.error('Speech error:', event);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
       }
-      const blob = new Blob([bytes], { type: 'audio/mpeg' });
-      const blobUrl = URL.createObjectURL(blob);
-      blobUrlRef.current = blobUrl;
-
-      const audio = new Audio(blobUrl);
-      audio.playbackRate = parseFloat(playbackRate);
-      audioRef.current = audio;
-
-      return new Promise((resolve) => {
-        audio.oncanplaythrough = async () => {
-          try {
-            await audio.play();
-            if (isMountedRef.current) {
-              setCurrentChunkIndex(chunkIndex);
-              setIsPlaying(true);
-              setIsPaused(false);
-              setIsLoading(false);
-            }
-            resolve(true);
-          } catch (e) {
-            console.error('[AudioPlayer] Play failed:', e);
-            resolve(false);
-          }
-        };
-
-        audio.ontimeupdate = () => {
-          if (audio.duration > 0 && isMountedRef.current) {
-            const chunkProgress = audio.currentTime / audio.duration;
-            const overallProgress = ((chunkIndex + chunkProgress) / chunks.length) * 100;
-            setProgress(overallProgress);
-            onProgress?.(overallProgress);
-
-            // Save progress occasionally
-            if (readingSessionId && Math.floor(overallProgress) % 10 === 0) {
-              supabase
-                .from('reading_sessions')
-                .update({
-                  progress_percentage: overallProgress,
-                  last_read_at: new Date().toISOString()
-                })
-                .eq('id', readingSessionId)
-                .then();
-            }
-          }
-        };
-
-        audio.onended = () => {
-          // Play next chunk
-          playChunk(chunkIndex + 1);
-        };
-
-        audio.onerror = () => {
-          console.error('[AudioPlayer] Audio error on chunk', chunkIndex);
-          playChunk(chunkIndex + 1);
-        };
-
-        audio.load();
-
-        // Timeout in case oncanplaythrough never fires
-        setTimeout(() => {
-          if (audioRef.current === audio && !audio.paused) return;
-          resolve(false);
-        }, 10000);
-      });
-    } catch (err) {
-      console.error('[AudioPlayer] Chunk error:', err);
-      return false;
-    }
-  }, [chunks, playbackRate, onProgress, onComplete, readingSessionId]);
-
-  // Main play handler
-  const handlePlay = async () => {
-    if (!summary) {
-      toast({ title: 'No content', description: 'No summary to read', variant: 'destructive' });
-      return;
-    }
-
-    setError(null);
-
-    // Resume if paused
-    if (isPaused && audioRef.current) {
-      try {
-        await audioRef.current.play();
-        setIsPaused(false);
-        setIsPlaying(true);
-        return;
-      } catch {
-        setIsPaused(false);
+      if (!isMountedRef.current) return;
+      setIsLoading(false);
+      setIsPlaying(false);
+      
+      if (event.error !== 'interrupted') {
+        toast({
+          title: 'Speech Error',
+          description: 'Failed to play audio',
+          variant: 'destructive',
+        });
       }
-    }
+    };
 
-    setIsLoading(true);
-    setLoadingMessage('Checking for audio...');
+    window.speechSynthesis.speak(utterance);
+  }, [summary, selectedVoice, voices, playbackRate, isPaused, progress, onProgress, onComplete, toast, cleanup]);
 
-    // First check if chunks already exist
-    let availableChunks = chunks.length > 0 ? chunks : await fetchChunks();
-
-    if (!availableChunks || availableChunks.length === 0) {
-      // Poll for chunks with generation
-      availableChunks = await pollChunksUntilReady();
-    }
-
-    if (!isMountedRef.current) return;
-
-    if (!availableChunks || availableChunks.length === 0) {
-      setIsLoading(false);
-      setError('Audio generation failed. Please try again.');
-      toast({
-        title: 'Audio generation failed',
-        description: 'Could not generate audio chunks. Please try again.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // We have chunks - update state
-    setChunks(availableChunks);
-    setTotalChunks(availableChunks.length);
-    setChunksLoaded(true);
-
-    // Start playback
-    const success = await playChunk(currentChunkIndex);
-    if (!success && isMountedRef.current) {
-      setIsLoading(false);
-      setError('Failed to play audio. Please try again.');
-      toast({
-        title: 'Playback error',
-        description: 'Could not start audio playback.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleRetry = () => {
-    setError(null);
-    setChunks([]);
-    setChunksLoaded(false);
-    setCurrentChunkIndex(0);
-    handlePlay();
-  };
-
-  const handlePause = () => {
-    if (audioRef.current && isPlaying) {
-      audioRef.current.pause();
+  const handlePause = useCallback(() => {
+    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+      window.speechSynthesis.pause();
       setIsPlaying(false);
       setIsPaused(true);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
     }
-  };
+  }, []);
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     cleanup();
     setIsPlaying(false);
     setIsPaused(false);
     setProgress(0);
-    setCurrentChunkIndex(0);
-  };
+  }, [cleanup]);
 
-  const handleSkip = (direction: 'forward' | 'backward') => {
-    if (chunks.length === 0) return;
-    
-    const newIndex = direction === 'forward'
-      ? Math.min(currentChunkIndex + 1, chunks.length - 1)
-      : Math.max(currentChunkIndex - 1, 0);
-
-    if (newIndex !== currentChunkIndex && isPlaying) {
-      playChunk(newIndex);
-    } else {
-      setCurrentChunkIndex(newIndex);
-      setProgress((newIndex / chunks.length) * 100);
-    }
-  };
-
-  const handleSpeedChange = (speed: string) => {
+  const handleSpeedChange = useCallback((speed: string) => {
     setPlaybackRate(speed);
-    if (audioRef.current) {
-      audioRef.current.playbackRate = parseFloat(speed);
-    }
-  };
+    // Note: Web Speech API doesn't allow changing rate mid-speech
+    // User needs to restart to apply new rate
+  }, []);
 
   return (
     <div className="space-y-5">
@@ -460,20 +245,15 @@ export default function AudioPlayerCard({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Volume2 className="w-4 h-4 text-primary animate-pulse" />
-          <span className="text-xs font-medium uppercase tracking-wider">Azure Neural TTS</span>
+          <span className="text-xs font-medium uppercase tracking-wider">Text to Speech</span>
         </div>
-        {totalChunks > 0 && (
-          <span className="text-xs text-muted-foreground">
-            Chunk {currentChunkIndex + 1} / {totalChunks}
-          </span>
-        )}
       </div>
 
       {/* Voice & Speed Selectors */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-center gap-2 flex-1">
           <span className="text-sm font-medium text-muted-foreground">Voice:</span>
-          <AzureVoiceSelector
+          <VoiceSelector
             selectedVoice={selectedVoice}
             onVoiceChange={setSelectedVoice}
             disabled={isPlaying || isLoading}
@@ -496,17 +276,6 @@ export default function AudioPlayerCard({
         </div>
       </div>
 
-      {/* Error State */}
-      {error && (
-        <div className="flex items-center justify-between p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-          <span className="text-sm text-destructive">{error}</span>
-          <Button variant="outline" size="sm" onClick={handleRetry} className="gap-2">
-            <RefreshCw className="w-4 h-4" />
-            Retry
-          </Button>
-        </div>
-      )}
-
       {/* Progress */}
       <div className="space-y-3">
         <div className="flex items-center justify-between text-sm">
@@ -514,38 +283,14 @@ export default function AudioPlayerCard({
           <span className="font-bold text-primary text-lg">{Math.round(progress)}%</span>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleSkip('backward')}
-            className="h-10 w-10 rounded-full hover:bg-primary/10 shrink-0"
-            aria-label="Previous chunk"
-            disabled={currentChunkIndex <= 0}
-          >
-            <SkipBack className="w-5 h-5" />
-          </Button>
-
-          <div className="flex-1 py-2">
-            <Slider
-              value={[progress]}
-              max={100}
-              step={1}
-              className="w-full cursor-pointer"
-              disabled
-            />
-          </div>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleSkip('forward')}
-            className="h-10 w-10 rounded-full hover:bg-primary/10 shrink-0"
-            aria-label="Next chunk"
-            disabled={currentChunkIndex >= chunks.length - 1}
-          >
-            <SkipForward className="w-5 h-5" />
-          </Button>
+        <div className="py-2">
+          <Slider
+            value={[progress]}
+            max={100}
+            step={1}
+            className="w-full cursor-pointer"
+            disabled
+          />
         </div>
       </div>
 
@@ -558,7 +303,7 @@ export default function AudioPlayerCard({
             className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary px-8 h-14 rounded-full shadow-lg min-w-[180px]"
           >
             <Loader2 className="w-6 h-6 animate-spin" />
-            <span className="text-lg font-semibold">{loadingMessage}</span>
+            <span className="text-lg font-semibold">Loading...</span>
           </Button>
         ) : isPlaying ? (
           <Button
@@ -592,6 +337,13 @@ export default function AudioPlayerCard({
           </Button>
         )}
       </div>
+
+      {/* Browser support note */}
+      {!('speechSynthesis' in window) && (
+        <p className="text-xs text-center text-destructive">
+          Text-to-speech is not supported in this browser
+        </p>
+      )}
     </div>
   );
 }
