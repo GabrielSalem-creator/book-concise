@@ -1,8 +1,5 @@
 project_id = "rldrcongresqaqbebceb"
 
-[functions.generate-audio-chunks]
-verify_jwt = false
-
 [functions.search-book-pdf]
 verify_jwt = false
 
@@ -21,9 +18,6 @@ verify_jwt = false
 [functions.chat-with-book]
 verify_jwt = false
 
-[functions.azure-tts]
-verify_jwt = false
-
 [functions.get-admin-users]
 verify_jwt = false
 
@@ -34,7 +28,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.approve-subscription]
-verify_jwt = false
-
-[functions.generate-audio-background]
 verify_jwt = false
