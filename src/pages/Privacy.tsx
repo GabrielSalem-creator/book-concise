@@ -229,7 +229,7 @@ const Privacy = () => {
 
           <div className="mt-4 pt-4 border-t border-border">
             <p className="text-xs sm:text-sm text-muted-foreground">
-              You can also reach us at <a href="mailto:support@nocturnlb.info" className="text-primary hover:underline">support@nocturnlb.info</a>
+              You can also reach us at <a href="mailto:gabriel.salem2008@outlook.com" className="text-primary hover:underline">gabriel.salem2008@outlook.com</a>
             </p>
           </div>
         </Card>

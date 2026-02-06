@@ -254,19 +254,23 @@ serve(async (req) => {
 
     // Action: Generate chunks for a book
     if (action === 'generate' && bookId) {
-      // Get summary
-      const { data: summary, error: summaryError } = await supabase
+      // Get summary (use limit(1) to handle multiple summaries for same book)
+      const { data: summaries, error: summaryError } = await supabase
         .from('summaries')
         .select('id, content')
         .eq('book_id', bookId)
-        .maybeSingle();
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      if (summaryError || !summary) {
+      if (summaryError || !summaries || summaries.length === 0) {
+        console.error('[CHUNK-AUDIO] Summary error:', summaryError);
         return new Response(
           JSON.stringify({ error: "Summary not found for this book" }),
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      const summary = summaries[0];
 
       const voice = voiceName || FEMALE_VOICE;
 
