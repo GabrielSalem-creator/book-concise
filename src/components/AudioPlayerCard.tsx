@@ -1,243 +1,171 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, StopCircle, Volume2, Loader2, Settings2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Play, Pause, StopCircle, Volume2, Loader2, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import VoiceSelector from '@/components/VoiceSelector';
 
 interface AudioPlayerCardProps {
   bookId: string | undefined;
   summary: string;
+  audioUrl?: string | null;
   onProgress?: (progress: number) => void;
   onComplete?: () => void;
   readingSessionId?: string | null;
 }
 
-const SPEED_OPTIONS = [
-  { value: '0.5', label: '0.5x' },
-  { value: '0.75', label: '0.75x' },
-  { value: '1', label: '1x' },
-  { value: '1.25', label: '1.25x' },
-  { value: '1.5', label: '1.5x' },
-  { value: '1.75', label: '1.75x' },
-  { value: '2', label: '2x' },
-];
-
 export default function AudioPlayerCard({
-  summary,
+  audioUrl,
   onProgress,
   onComplete,
 }: AudioPlayerCardProps) {
   const { toast } = useToast();
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [playbackRate, setPlaybackRate] = useState('1');
-  const [selectedVoice, setSelectedVoice] = useState('');
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
 
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const startTimeRef = useRef<number>(0);
-  const progressIntervalRef = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const isMountedRef = useRef(true);
 
-  // Load voices on mount
   useEffect(() => {
     isMountedRef.current = true;
-
-    const loadVoices = () => {
-      if (!('speechSynthesis' in window)) return;
-      
-      const availableVoices = window.speechSynthesis.getVoices();
-      if (availableVoices.length > 0) {
-        const englishVoices = availableVoices
-          .filter(v => v.lang.startsWith('en'))
-          .sort((a, b) => {
-            const aGoogle = a.name.toLowerCase().includes('google');
-            const bGoogle = b.name.toLowerCase().includes('google');
-            if (aGoogle && !bGoogle) return -1;
-            if (!aGoogle && bGoogle) return 1;
-            return a.name.localeCompare(b.name);
-          });
-
-        setVoices(englishVoices.length > 0 ? englishVoices : availableVoices);
-
-        if (!selectedVoice) {
-          const googleVoice = englishVoices.find(v => 
-            v.name.toLowerCase().includes('google') && v.lang === 'en-US'
-          );
-          setSelectedVoice((googleVoice || englishVoices[0] || availableVoices[0])?.name || '');
-        }
-      }
-    };
-
-    loadVoices();
     
-    if ('speechSynthesis' in window && window.speechSynthesis.onvoiceschanged !== undefined) {
-      window.speechSynthesis.onvoiceschanged = loadVoices;
+    // Create audio element
+    const audio = new Audio();
+    audioRef.current = audio;
+
+    audio.addEventListener('loadstart', () => {
+      if (isMountedRef.current) setIsLoading(true);
+    });
+
+    audio.addEventListener('canplay', () => {
+      if (isMountedRef.current) setIsLoading(false);
+    });
+
+    audio.addEventListener('loadedmetadata', () => {
+      if (isMountedRef.current) {
+        setDuration(audio.duration);
+        setIsLoading(false);
+      }
+    });
+
+    audio.addEventListener('timeupdate', () => {
+      if (isMountedRef.current && audio.duration) {
+        const currentProgress = (audio.currentTime / audio.duration) * 100;
+        setProgress(currentProgress);
+        setCurrentTime(audio.currentTime);
+        onProgress?.(currentProgress);
+      }
+    });
+
+    audio.addEventListener('ended', () => {
+      if (isMountedRef.current) {
+        setIsPlaying(false);
+        setProgress(100);
+        onComplete?.();
+      }
+    });
+
+    audio.addEventListener('error', (e) => {
+      console.error('Audio error:', e);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+        setIsPlaying(false);
+        toast({
+          title: 'Audio Error',
+          description: 'Failed to load audio file',
+          variant: 'destructive',
+        });
+      }
+    });
+
+    // Load audio if URL is available
+    if (audioUrl) {
+      audio.src = audioUrl;
+      audio.load();
     }
 
     return () => {
       isMountedRef.current = false;
-      cleanup();
+      audio.pause();
+      audio.src = '';
     };
-  }, []);
+  }, [audioUrl, onProgress, onComplete, toast]);
 
-  const cleanup = useCallback(() => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current);
-      progressIntervalRef.current = null;
-    }
-    utteranceRef.current = null;
-  }, []);
-
-  // Estimate duration: ~150 words per minute
-  const estimateDuration = (text: string, rate: number): number => {
-    const words = text.split(/\s+/).length;
-    return (words / 150 / rate) * 60 * 1000;
-  };
-
-  const handlePlay = useCallback(() => {
-    if (!('speechSynthesis' in window)) {
+  const handlePlay = () => {
+    if (!audioRef.current || !audioUrl) {
       toast({
-        title: 'Not Supported',
-        description: 'Text-to-speech is not supported in this browser',
+        title: 'No Audio',
+        description: 'Audio is not available for this summary',
         variant: 'destructive',
       });
       return;
     }
 
-    if (!summary) {
-      toast({
-        title: 'No Content',
-        description: 'No summary to read',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Resume if paused
-    if (isPaused) {
-      window.speechSynthesis.resume();
-      setIsPlaying(true);
-      setIsPaused(false);
-      
-      // Restart progress tracking
-      const rate = parseFloat(playbackRate);
-      const estimatedDuration = estimateDuration(summary, rate);
-      startTimeRef.current = Date.now() - (progress / 100) * estimatedDuration;
-      
-      progressIntervalRef.current = window.setInterval(() => {
-        if (!isMountedRef.current) return;
-        const elapsed = Date.now() - startTimeRef.current;
-        const currentProgress = Math.min((elapsed / estimatedDuration) * 100, 99);
-        setProgress(currentProgress);
-        onProgress?.(currentProgress);
-      }, 500);
-      return;
-    }
-
-    // Start fresh
-    cleanup();
-    setIsLoading(true);
-    setProgress(0);
-
-    const utterance = new SpeechSynthesisUtterance(summary);
-    utteranceRef.current = utterance;
-
-    // Set voice
-    const voice = voices.find(v => v.name === selectedVoice);
-    if (voice) {
-      utterance.voice = voice;
-    }
-
-    utterance.rate = parseFloat(playbackRate);
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-
-    const rate = parseFloat(playbackRate);
-    const estimatedDuration = estimateDuration(summary, rate);
-
-    utterance.onstart = () => {
-      if (!isMountedRef.current) return;
-      setIsLoading(false);
-      setIsPlaying(true);
-      setIsPaused(false);
-      startTimeRef.current = Date.now();
-
-      progressIntervalRef.current = window.setInterval(() => {
-        if (!isMountedRef.current) return;
-        const elapsed = Date.now() - startTimeRef.current;
-        const currentProgress = Math.min((elapsed / estimatedDuration) * 100, 99);
-        setProgress(currentProgress);
-        onProgress?.(currentProgress);
-      }, 500);
-    };
-
-    utterance.onend = () => {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-        progressIntervalRef.current = null;
-      }
-      if (!isMountedRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
       setIsPlaying(false);
-      setIsPaused(false);
-      setProgress(100);
-      onComplete?.();
-    };
-
-    utterance.onerror = (event) => {
-      console.error('Speech error:', event);
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-        progressIntervalRef.current = null;
-      }
-      if (!isMountedRef.current) return;
-      setIsLoading(false);
-      setIsPlaying(false);
-      
-      if (event.error !== 'interrupted') {
+    } else {
+      audioRef.current.play().catch((err) => {
+        console.error('Play error:', err);
         toast({
-          title: 'Speech Error',
+          title: 'Playback Error',
           description: 'Failed to play audio',
           variant: 'destructive',
         });
-      }
-    };
-
-    window.speechSynthesis.speak(utterance);
-  }, [summary, selectedVoice, voices, playbackRate, isPaused, progress, onProgress, onComplete, toast, cleanup]);
-
-  const handlePause = useCallback(() => {
-    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-      window.speechSynthesis.pause();
-      setIsPlaying(false);
-      setIsPaused(true);
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-        progressIntervalRef.current = null;
-      }
+      });
+      setIsPlaying(true);
     }
-  }, []);
+  };
 
-  const handleStop = useCallback(() => {
-    cleanup();
-    setIsPlaying(false);
-    setIsPaused(false);
-    setProgress(0);
-  }, [cleanup]);
+  const handleStop = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setIsPlaying(false);
+      setProgress(0);
+      setCurrentTime(0);
+    }
+  };
 
-  const handleSpeedChange = useCallback((speed: string) => {
-    setPlaybackRate(speed);
-    // Note: Web Speech API doesn't allow changing rate mid-speech
-    // User needs to restart to apply new rate
-  }, []);
+  const handleSeek = (value: number[]) => {
+    if (audioRef.current && duration) {
+      const newTime = (value[0] / 100) * duration;
+      audioRef.current.currentTime = newTime;
+      setProgress(value[0]);
+      setCurrentTime(newTime);
+    }
+  };
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  if (!audioUrl) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Volume2 className="w-4 h-4 text-primary" />
+            <span className="text-xs font-medium uppercase tracking-wider">Audio Player</span>
+          </div>
+        </div>
+        <div className="text-center py-8">
+          <div className="text-muted-foreground text-sm">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+            Audio is being generated...
+          </div>
+          <p className="text-xs text-muted-foreground/70 mt-2">
+            This may take a moment. Please check back later.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -245,51 +173,37 @@ export default function AudioPlayerCard({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Volume2 className="w-4 h-4 text-primary animate-pulse" />
-          <span className="text-xs font-medium uppercase tracking-wider">Text to Speech</span>
+          <span className="text-xs font-medium uppercase tracking-wider">Audio Player</span>
         </div>
-      </div>
-
-      {/* Voice & Speed Selectors */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-center gap-2 flex-1">
-          <span className="text-sm font-medium text-muted-foreground">Voice:</span>
-          <VoiceSelector
-            selectedVoice={selectedVoice}
-            onVoiceChange={setSelectedVoice}
-            disabled={isPlaying || isLoading}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Settings2 className="w-4 h-4 text-muted-foreground" />
-          <Select value={playbackRate} onValueChange={handleSpeedChange} disabled={isLoading}>
-            <SelectTrigger className="w-20 h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SPEED_OPTIONS.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <a 
+          href={audioUrl} 
+          download 
+          className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1"
+        >
+          <Download className="w-3 h-3" />
+          Download
+        </a>
       </div>
 
       {/* Progress */}
       <div className="space-y-3">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground font-medium">Progress</span>
+          <span className="text-muted-foreground font-medium">
+            {formatTime(currentTime)}
+          </span>
           <span className="font-bold text-primary text-lg">{Math.round(progress)}%</span>
+          <span className="text-muted-foreground font-medium">
+            {formatTime(duration)}
+          </span>
         </div>
 
         <div className="py-2">
           <Slider
             value={[progress]}
             max={100}
-            step={1}
+            step={0.1}
             className="w-full cursor-pointer"
-            disabled
+            onValueChange={handleSeek}
           />
         </div>
       </div>
@@ -305,28 +219,27 @@ export default function AudioPlayerCard({
             <Loader2 className="w-6 h-6 animate-spin" />
             <span className="text-lg font-semibold">Loading...</span>
           </Button>
-        ) : isPlaying ? (
-          <Button
-            size="lg"
-            variant="secondary"
-            onClick={handlePause}
-            className="gap-3 px-8 h-14 rounded-full shadow-md min-w-[160px] bg-secondary/20 hover:bg-secondary/30 border border-secondary/30"
-          >
-            <Pause className="w-6 h-6" />
-            <span className="text-lg font-semibold">Pause</span>
-          </Button>
         ) : (
           <Button
             size="lg"
             onClick={handlePlay}
             className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 px-8 h-14 rounded-full shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 min-w-[160px]"
           >
-            <Play className="w-6 h-6 fill-current" />
-            <span className="text-lg font-semibold">{isPaused ? 'Resume' : 'Play'}</span>
+            {isPlaying ? (
+              <>
+                <Pause className="w-6 h-6" />
+                <span className="text-lg font-semibold">Pause</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-6 h-6 fill-current" />
+                <span className="text-lg font-semibold">Play</span>
+              </>
+            )}
           </Button>
         )}
 
-        {(isPlaying || isPaused || progress > 0) && progress < 100 && (
+        {(isPlaying || progress > 0) && progress < 100 && (
           <Button
             variant="outline"
             size="icon"
@@ -337,13 +250,6 @@ export default function AudioPlayerCard({
           </Button>
         )}
       </div>
-
-      {/* Browser support note */}
-      {!('speechSynthesis' in window) && (
-        <p className="text-xs text-center text-destructive">
-          Text-to-speech is not supported in this browser
-        </p>
-      )}
     </div>
   );
 }
