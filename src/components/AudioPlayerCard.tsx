@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, StopCircle, Volume2, Loader2, Download, RefreshCw, AlertCircle } from 'lucide-react';
+import { Play, Pause, StopCircle, Volume2, Loader2, Download, RefreshCw, AlertCircle, SkipBack, SkipForward } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
@@ -11,6 +11,43 @@ interface AudioPlayerCardProps {
   onProgress?: (progress: number) => void;
   onComplete?: () => void;
   readingSessionId?: string | null;
+}
+
+// Audio context for iOS unlock
+let audioContextUnlocked = false;
+
+async function unlockAudioContext(): Promise<void> {
+  if (audioContextUnlocked) return;
+  
+  try {
+    // Create AudioContext to unlock audio on iOS
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    
+    const ctx = new AudioContextClass();
+    
+    // Create a short silent buffer and play it
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+    
+    // Resume context if suspended
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+    
+    audioContextUnlocked = true;
+    console.log('Audio context unlocked for iOS');
+    
+    // Clean up after a short delay
+    setTimeout(() => {
+      ctx.close().catch(() => {});
+    }, 100);
+  } catch (e) {
+    console.warn('Failed to unlock audio context:', e);
+  }
 }
 
 export default function AudioPlayerCard({
@@ -26,23 +63,13 @@ export default function AudioPlayerCard({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const isMountedRef = useRef(true);
+  const hasAttemptedPlayRef = useRef(false);
 
-  // Create and configure audio element
-  const initAudio = useCallback(() => {
-    if (!audioUrl) return null;
-    
-    const audio = new Audio();
-    // Don't use crossOrigin as it can cause CORS issues with public buckets
-    audio.preload = 'auto';
-    
-    return audio;
-  }, [audioUrl]);
-
-  // Initialize audio element
+  // Initialize audio element when URL changes
   useEffect(() => {
     isMountedRef.current = true;
     setAudioError(null);
@@ -51,22 +78,29 @@ export default function AudioPlayerCard({
     setProgress(0);
     setCurrentTime(0);
     setDuration(0);
+    hasAttemptedPlayRef.current = false;
     
     if (!audioUrl) {
-      audioRef.current = null;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
+      }
       return;
     }
 
-    console.log('AudioPlayerCard: Initializing with URL:', audioUrl);
+    console.log('[AudioPlayer] Initializing with URL:', audioUrl);
     
-    const audio = initAudio();
-    if (!audio) return;
+    // Create audio element
+    const audio = new Audio();
+    audio.preload = 'metadata';
+    audio.playbackRate = playbackRate;
     
     audioRef.current = audio;
 
     const handleLoadStart = () => {
       if (isMountedRef.current) {
-        console.log('Audio: loadstart');
+        console.log('[AudioPlayer] loadstart');
         setIsLoading(true);
         setAudioError(null);
       }
@@ -74,21 +108,14 @@ export default function AudioPlayerCard({
 
     const handleCanPlay = () => {
       if (isMountedRef.current) {
-        console.log('Audio: canplay');
-        setIsLoading(false);
-      }
-    };
-
-    const handleCanPlayThrough = () => {
-      if (isMountedRef.current) {
-        console.log('Audio: canplaythrough');
+        console.log('[AudioPlayer] canplay');
         setIsLoading(false);
       }
     };
 
     const handleLoadedMetadata = () => {
       if (isMountedRef.current && audio.duration && !isNaN(audio.duration)) {
-        console.log('Audio: loadedmetadata, duration:', audio.duration);
+        console.log('[AudioPlayer] loadedmetadata, duration:', audio.duration);
         setDuration(audio.duration);
         setIsLoading(false);
       }
@@ -96,7 +123,7 @@ export default function AudioPlayerCard({
 
     const handleDurationChange = () => {
       if (isMountedRef.current && audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-        console.log('Audio: durationchange:', audio.duration);
+        console.log('[AudioPlayer] durationchange:', audio.duration);
         setDuration(audio.duration);
       }
     };
@@ -112,7 +139,7 @@ export default function AudioPlayerCard({
 
     const handleEnded = () => {
       if (isMountedRef.current) {
-        console.log('Audio: ended');
+        console.log('[AudioPlayer] ended');
         setIsPlaying(false);
         setProgress(100);
         onComplete?.();
@@ -124,26 +151,26 @@ export default function AudioPlayerCard({
       let errorMessage = 'Failed to load audio';
       
       if (error) {
-        console.error('Audio error:', { 
+        console.error('[AudioPlayer] Error:', { 
           code: error.code, 
           message: error.message,
-          url: audioUrl,
+          url: audioUrl?.substring(0, 100) + '...',
           networkState: audio.networkState,
           readyState: audio.readyState
         });
         
         switch (error.code) {
           case MediaError.MEDIA_ERR_ABORTED:
-            errorMessage = 'Audio loading was aborted';
+            errorMessage = 'Audio loading was cancelled';
             break;
           case MediaError.MEDIA_ERR_NETWORK:
-            errorMessage = 'Network error - check your connection';
+            errorMessage = 'Network error - please check your connection';
             break;
           case MediaError.MEDIA_ERR_DECODE:
-            errorMessage = 'Audio format not supported';
+            errorMessage = 'Audio file could not be decoded';
             break;
           case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMessage = 'Audio source not found';
+            errorMessage = 'Audio format not supported';
             break;
         }
       }
@@ -157,14 +184,14 @@ export default function AudioPlayerCard({
 
     const handleWaiting = () => {
       if (isMountedRef.current) {
-        console.log('Audio: waiting (buffering)');
+        console.log('[AudioPlayer] waiting (buffering)');
         setIsLoading(true);
       }
     };
 
     const handlePlaying = () => {
       if (isMountedRef.current) {
-        console.log('Audio: playing');
+        console.log('[AudioPlayer] playing');
         setIsLoading(false);
         setIsPlaying(true);
       }
@@ -172,15 +199,19 @@ export default function AudioPlayerCard({
 
     const handlePause = () => {
       if (isMountedRef.current) {
-        console.log('Audio: pause');
+        console.log('[AudioPlayer] paused');
         setIsPlaying(false);
       }
+    };
+
+    const handleStalled = () => {
+      console.log('[AudioPlayer] stalled - network issue');
     };
 
     // Add all event listeners
     audio.addEventListener('loadstart', handleLoadStart);
     audio.addEventListener('canplay', handleCanPlay);
-    audio.addEventListener('canplaythrough', handleCanPlayThrough);
+    audio.addEventListener('canplaythrough', handleCanPlay);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('durationchange', handleDurationChange);
     audio.addEventListener('timeupdate', handleTimeUpdate);
@@ -189,15 +220,17 @@ export default function AudioPlayerCard({
     audio.addEventListener('waiting', handleWaiting);
     audio.addEventListener('playing', handlePlaying);
     audio.addEventListener('pause', handlePause);
+    audio.addEventListener('stalled', handleStalled);
 
-    // Set source and trigger load
+    // Set source - add cache buster for retries
     audio.src = audioUrl;
+    audio.load();
     
     return () => {
       isMountedRef.current = false;
       audio.removeEventListener('loadstart', handleLoadStart);
       audio.removeEventListener('canplay', handleCanPlay);
-      audio.removeEventListener('canplaythrough', handleCanPlayThrough);
+      audio.removeEventListener('canplaythrough', handleCanPlay);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('durationchange', handleDurationChange);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
@@ -206,20 +239,41 @@ export default function AudioPlayerCard({
       audio.removeEventListener('waiting', handleWaiting);
       audio.removeEventListener('playing', handlePlaying);
       audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('stalled', handleStalled);
       audio.pause();
       audio.src = '';
       audioRef.current = null;
     };
-  }, [audioUrl, retryCount, initAudio, onProgress, onComplete]);
+  }, [audioUrl, onProgress, onComplete]);
 
-  const handleRetry = () => {
-    setRetryCount(prev => prev + 1);
+  // Update playback rate when changed
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate]);
+
+  const handleRetry = useCallback(() => {
+    if (!audioUrl) return;
+    
     setAudioError(null);
+    setIsLoading(true);
+    
+    // Force reload with cache buster
+    const audio = audioRef.current;
+    if (audio) {
+      const newUrl = audioUrl.includes('?') 
+        ? `${audioUrl}&_t=${Date.now()}` 
+        : `${audioUrl}?_t=${Date.now()}`;
+      audio.src = newUrl;
+      audio.load();
+    }
+    
     toast({
       title: 'Retrying',
-      description: 'Attempting to reload audio...',
+      description: 'Reloading audio...',
     });
-  };
+  }, [audioUrl, toast]);
 
   const handlePlay = async () => {
     const audio = audioRef.current;
@@ -227,7 +281,7 @@ export default function AudioPlayerCard({
     if (!audio || !audioUrl) {
       toast({
         title: 'No Audio',
-        description: 'Audio is not available yet',
+        description: 'Audio is still being generated...',
         variant: 'destructive',
       });
       return;
@@ -238,23 +292,53 @@ export default function AudioPlayerCard({
       return;
     }
 
+    // Unlock audio context on first interaction (iOS requirement)
+    if (!hasAttemptedPlayRef.current) {
+      hasAttemptedPlayRef.current = true;
+      await unlockAudioContext();
+    }
+
     if (isPlaying) {
       audio.pause();
-      setIsPlaying(false);
     } else {
       try {
         setIsLoading(true);
+        
+        // If audio needs to be reloaded
+        if (audio.readyState < 2) {
+          audio.load();
+          await new Promise<void>((resolve, reject) => {
+            const onCanPlay = () => {
+              audio.removeEventListener('canplay', onCanPlay);
+              audio.removeEventListener('error', onError);
+              resolve();
+            };
+            const onError = () => {
+              audio.removeEventListener('canplay', onCanPlay);
+              audio.removeEventListener('error', onError);
+              reject(new Error('Failed to load audio'));
+            };
+            audio.addEventListener('canplay', onCanPlay);
+            audio.addEventListener('error', onError);
+            
+            // Timeout after 15 seconds
+            setTimeout(() => {
+              audio.removeEventListener('canplay', onCanPlay);
+              audio.removeEventListener('error', onError);
+              reject(new Error('Audio load timeout'));
+            }, 15000);
+          });
+        }
+        
         await audio.play();
-        setIsPlaying(true);
-        setIsLoading(false);
       } catch (err: any) {
-        console.error('Play error:', err);
+        console.error('[AudioPlayer] Play error:', err);
         setIsLoading(false);
         
         if (err.name === 'NotAllowedError') {
           toast({
-            title: 'Tap to Play',
-            description: 'Please tap play again',
+            title: 'Tap Required',
+            description: 'Please tap play again to start audio',
           });
         } else if (err.name === 'NotSupportedError') {
           setAudioError('Audio format not supported on this device');
@@ -286,6 +370,23 @@ export default function AudioPlayerCard({
     }
   };
 
+  const handleSkip = (seconds: number) => {
+    const audio = audioRef.current;
+    if (audio && duration) {
+      const newTime = Math.max(0, Math.min(duration, audio.currentTime + seconds));
+      audio.currentTime = newTime;
+      setCurrentTime(newTime);
+      setProgress((newTime / duration) * 100);
+    }
+  };
+
+  const togglePlaybackRate = () => {
+    const rates = [0.75, 1, 1.25, 1.5, 2];
+    const currentIndex = rates.indexOf(playbackRate);
+    const nextIndex = (currentIndex + 1) % rates.length;
+    setPlaybackRate(rates[nextIndex]);
+  };
+
   const formatTime = (seconds: number): string => {
     if (!seconds || isNaN(seconds) || !isFinite(seconds)) return '0:00';
     const mins = Math.floor(seconds / 60);
@@ -304,10 +405,10 @@ export default function AudioPlayerCard({
           </div>
         </div>
         <div className="text-center py-8">
-          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-muted-foreground" />
-          <p className="text-muted-foreground text-sm">Audio is being generated...</p>
-          <p className="text-xs text-muted-foreground/70 mt-2">
-            This may take a moment
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-primary" />
+          <p className="text-foreground font-medium">Generating audio...</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            This may take a moment. Please wait.
           </p>
         </div>
       </div>
@@ -325,28 +426,30 @@ export default function AudioPlayerCard({
           </div>
         </div>
         <div className="text-center py-6">
-          <AlertCircle className="w-8 h-8 mx-auto mb-3 text-destructive" />
+          <AlertCircle className="w-10 h-10 mx-auto mb-3 text-destructive" />
           <p className="text-destructive font-medium mb-1">{audioError}</p>
           <p className="text-xs text-muted-foreground mb-4">
             There was a problem loading the audio
           </p>
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center justify-center gap-3">
             <Button
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={handleRetry}
               className="gap-2"
             >
               <RefreshCw className="w-4 h-4" />
-              Retry
+              Try Again
             </Button>
             <a 
               href={audioUrl} 
               download 
-              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline px-3 py-1.5"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary px-3 py-1.5 border rounded-md"
             >
               <Download className="w-4 h-4" />
-              Download instead
+              Download
             </a>
           </div>
         </div>
@@ -362,24 +465,34 @@ export default function AudioPlayerCard({
           <Volume2 className={`w-4 h-4 ${isPlaying ? 'text-primary animate-pulse' : 'text-primary'}`} />
           <span className="text-xs font-medium uppercase tracking-wider">Audio Player</span>
         </div>
-        <a 
-          href={audioUrl} 
-          download 
-          className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1"
-        >
-          <Download className="w-3 h-3" />
-          Download
-        </a>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={togglePlaybackRate}
+            className="text-xs font-medium text-muted-foreground hover:text-primary px-2 py-1 rounded border border-border hover:border-primary transition-colors"
+          >
+            {playbackRate}x
+          </button>
+          <a 
+            href={audioUrl} 
+            download 
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1"
+          >
+            <Download className="w-3 h-3" />
+            Download
+          </a>
+        </div>
       </div>
 
       {/* Progress */}
       <div className="space-y-3">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground font-medium">
+          <span className="text-muted-foreground font-medium tabular-nums">
             {formatTime(currentTime)}
           </span>
           <span className="font-bold text-primary text-lg">{Math.round(progress)}%</span>
-          <span className="text-muted-foreground font-medium">
+          <span className="text-muted-foreground font-medium tabular-nums">
             {formatTime(duration)}
           </span>
         </div>
@@ -397,12 +510,24 @@ export default function AudioPlayerCard({
       </div>
 
       {/* Main Controls */}
-      <div className="flex items-center justify-center gap-3">
-        {isLoading ? (
+      <div className="flex items-center justify-center gap-2">
+        {/* Skip backward */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => handleSkip(-15)}
+          disabled={!duration}
+          className="h-10 w-10 rounded-full"
+        >
+          <SkipBack className="w-4 h-4" />
+        </Button>
+
+        {/* Play/Pause Button */}
+        {isLoading && !isPlaying ? (
           <Button
             size="lg"
             disabled
-            className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary px-8 h-14 rounded-full shadow-lg min-w-[180px]"
+            className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary px-8 h-14 rounded-full shadow-lg min-w-[160px]"
           >
             <Loader2 className="w-6 h-6 animate-spin" />
             <span className="text-lg font-semibold">Loading...</span>
@@ -411,7 +536,7 @@ export default function AudioPlayerCard({
           <Button
             size="lg"
             onClick={handlePlay}
-            className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 px-8 h-14 rounded-full shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 min-w-[160px]"
+            className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 px-8 h-14 rounded-full shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 min-w-[160px] transition-all"
           >
             {isPlaying ? (
               <>
@@ -427,14 +552,26 @@ export default function AudioPlayerCard({
           </Button>
         )}
 
+        {/* Skip forward */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => handleSkip(15)}
+          disabled={!duration}
+          className="h-10 w-10 rounded-full"
+        >
+          <SkipForward className="w-4 h-4" />
+        </Button>
+
+        {/* Stop Button */}
         {(isPlaying || progress > 0) && progress < 100 && (
           <Button
             variant="outline"
             size="icon"
             onClick={handleStop}
-            className="h-12 w-12 rounded-full hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive"
+            className="h-10 w-10 rounded-full hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive ml-2"
           >
-            <StopCircle className="w-5 h-5" />
+            <StopCircle className="w-4 h-4" />
           </Button>
         )}
       </div>
