@@ -21,17 +21,25 @@ interface Summary {
 // Helper: sleep for ms
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Generate audio with retry logic
-async function generateAudioWithRetry(
+// Escape XML special characters
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+// Generate audio using Azure TTS
+async function generateAudioWithAzure(
   text: string, 
   voiceName: string, 
   azureKey: string, 
-  azureRegion: string,
-  maxRetries: number = 3
-): Promise<string | null> {
-  let region = azureRegion;
-  
+  azureRegion: string
+): Promise<Uint8Array | null> {
   // Clean up region format
+  let region = azureRegion;
   if (region.includes('.api.cognitive.microsoft.com')) {
     const match = region.match(/https?:\/\/([^.]+)\.api\.cognitive\.microsoft\.com/);
     if (match) region = match[1];
@@ -40,27 +48,24 @@ async function generateAudioWithRetry(
     region = region.replace(/https?:\/\//, '').split('.')[0];
   }
 
-  const escapedText = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  // Truncate text if too long
+  const maxChars = 8000;
+  const truncatedText = text.length > maxChars ? text.substring(0, maxChars) + "..." : text;
 
   const ssml = `
 <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
   <voice name='${voiceName}'>
-    <prosody rate='1.0' pitch='0%'>
-      ${escapedText}
+    <prosody rate='0.95' pitch='0%'>
+      ${escapeXml(truncatedText)}
     </prosody>
   </voice>
 </speak>`.trim();
 
   const ttsEndpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      console.log(`[TTS] Attempt ${attempt}/${maxRetries} for ${voiceName} in region: ${region}`);
+      console.log(`[BG-TTS] Attempt ${attempt}/3 for ${voiceName}`);
 
       const response = await fetch(ttsEndpoint, {
         method: "POST",
@@ -75,39 +80,29 @@ async function generateAudioWithRetry(
 
       if (response.status === 429) {
         const retryAfter = parseInt(response.headers.get('Retry-After') || '30');
-        console.log(`[TTS] Rate limited (429), waiting ${retryAfter}s before retry...`);
+        console.log(`[BG-TTS] Rate limited, waiting ${retryAfter}s...`);
         await sleep(retryAfter * 1000);
         continue;
       }
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[TTS] Azure error for ${voiceName}:`, response.status, errorText);
-        if (attempt < maxRetries) {
-          await sleep(2000 * attempt); // Exponential backoff
+        console.error(`[BG-TTS] Azure error [${response.status}]:`, errorText);
+        if (attempt < 3) {
+          await sleep(2000 * attempt);
           continue;
         }
         return null;
       }
 
       const audioBuffer = await response.arrayBuffer();
-      const uint8Array = new Uint8Array(audioBuffer);
-      
-      let binaryString = '';
-      const chunkSize = 8192;
-      for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        const chunk = uint8Array.subarray(i, i + chunkSize);
-        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
-      }
-      const base64Audio = btoa(binaryString);
-      
-      console.log(`[TTS] Generated ${voiceName}: ${audioBuffer.byteLength} bytes`);
-      return base64Audio;
+      console.log(`[BG-TTS] Generated ${voiceName}: ${audioBuffer.byteLength} bytes`);
+      return new Uint8Array(audioBuffer);
 
     } catch (error) {
-      console.error(`[TTS] Attempt ${attempt} failed for ${voiceName}:`, error);
-      if (attempt < maxRetries) {
-        await sleep(3000 * attempt); // Longer wait on exception
+      console.error(`[BG-TTS] Attempt ${attempt} failed:`, error);
+      if (attempt < 3) {
+        await sleep(3000 * attempt);
         continue;
       }
       return null;
@@ -117,180 +112,127 @@ async function generateAudioWithRetry(
   return null;
 }
 
-// Find summaries that need audio
-async function getSummariesNeedingAudio(supabase: SupabaseClient): Promise<Summary[]> {
-  const { data: allSummaries, error } = await supabase
-    .from('summaries')
-    .select('id, book_id, content, audio_url')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('[BG-AUDIO] Error fetching summaries:', error);
-    return [];
-  }
-
-  const summaries = (allSummaries || []) as Summary[];
-  
-  return summaries.filter(summary => {
-    if (!summary.audio_url) return true;
-    
-    try {
-      const audioData = typeof summary.audio_url === 'string' 
-        ? JSON.parse(summary.audio_url) 
-        : summary.audio_url;
-      
-      const hasFemale = audioData[FEMALE_VOICE] && audioData[FEMALE_VOICE].length > 100;
-      const hasMale = audioData[MALE_VOICE] && audioData[MALE_VOICE].length > 100;
-      
-      return !hasFemale || !hasMale;
-    } catch {
-      return true;
-    }
-  });
-}
-
-// Process a single summary - one voice at a time with delays
-async function processSingleSummary(
+// Upload audio to storage and update summary
+async function uploadAudioAndUpdate(
   supabase: SupabaseClient,
-  summary: Summary,
-  azureKey: string,
-  azureRegion: string
-): Promise<{ success: boolean; bookId: string }> {
-  console.log(`[BG-AUDIO] Processing book ${summary.book_id}`);
-  
-  let existingAudio: Record<string, string> = {};
-  if (summary.audio_url) {
-    try {
-      existingAudio = typeof summary.audio_url === 'string'
-        ? JSON.parse(summary.audio_url)
-        : summary.audio_url;
-    } catch {
-      existingAudio = {};
-    }
-  }
-
-  const needsFemale = !existingAudio[FEMALE_VOICE] || existingAudio[FEMALE_VOICE].length < 100;
-  const needsMale = !existingAudio[MALE_VOICE] || existingAudio[MALE_VOICE].length < 100;
-
-  const audioCache = { ...existingAudio };
-  let success = true;
-
-  // Process female voice first
-  if (needsFemale) {
-    console.log('[BG-AUDIO] Generating female voice...');
-    const femaleAudio = await generateAudioWithRetry(
-      summary.content,
-      FEMALE_VOICE,
-      azureKey,
-      azureRegion
-    );
-    if (femaleAudio) {
-      audioCache[FEMALE_VOICE] = femaleAudio;
-      // Save immediately after female generation
-      await supabase
-        .from('summaries')
-        .update({ audio_url: JSON.stringify(audioCache) })
-        .eq('id', summary.id);
-      console.log('[BG-AUDIO] Female voice saved');
-    } else {
-      success = false;
-    }
-  }
-
-  // Wait before processing male voice to avoid rate limits
-  if (needsMale && success) {
-    console.log('[BG-AUDIO] Waiting 5s before male voice...');
-    await sleep(5000);
+  audioData: Uint8Array,
+  bookId: string,
+  summaryId: string,
+  voiceName: string
+): Promise<string | null> {
+  try {
+    const fileName = `${bookId}/${summaryId}.mp3`;
     
-    console.log('[BG-AUDIO] Generating male voice...');
-    const maleAudio = await generateAudioWithRetry(
-      summary.content,
-      MALE_VOICE,
-      azureKey,
-      azureRegion
-    );
-    if (maleAudio) {
-      audioCache[MALE_VOICE] = maleAudio;
-    } else {
-      success = false;
+    const { error: uploadError } = await supabase.storage
+      .from('audio-summaries')
+      .upload(fileName, audioData, {
+        contentType: 'audio/mpeg',
+        upsert: true,
+        cacheControl: '3600',
+      });
+
+    if (uploadError) {
+      console.error(`[BG-TTS] Upload error:`, uploadError);
+      return null;
     }
+
+    const { data: urlData } = supabase.storage
+      .from('audio-summaries')
+      .getPublicUrl(fileName);
+
+    const audioUrl = urlData.publicUrl;
+
+    // Update summary with audio URL
+    const { error: updateError } = await supabase
+      .from('summaries')
+      .update({
+        audio_url: audioUrl,
+        audio_generated_at: new Date().toISOString(),
+        audio_voice: voiceName,
+      })
+      .eq('id', summaryId);
+
+    if (updateError) {
+      console.error(`[BG-TTS] Update error:`, updateError);
+    }
+
+    console.log(`[BG-TTS] Audio saved: ${audioUrl}`);
+    return audioUrl;
+
+  } catch (error) {
+    console.error(`[BG-TTS] Error in uploadAudioAndUpdate:`, error);
+    return null;
   }
-
-  // Final save with both voices
-  const { error: updateError } = await supabase
-    .from('summaries')
-    .update({ audio_url: JSON.stringify(audioCache) })
-    .eq('id', summary.id);
-
-  if (updateError) {
-    console.error(`[BG-AUDIO] Update failed for ${summary.id}:`, updateError);
-    return { success: false, bookId: summary.book_id };
-  }
-
-  console.log(`[BG-AUDIO] Completed book ${summary.book_id} (success: ${success})`);
-  return { success, bookId: summary.book_id };
 }
 
-// Process a single book by ID (called from generate-summary)
+// Process a single book
 async function processSingleBook(
   supabase: SupabaseClient,
   bookId: string,
   summaryContent: string,
+  summaryId: string | null,
   azureKey: string,
   azureRegion: string
-) {
-  console.log(`[BG-AUDIO] Processing single book ${bookId}`);
-  
-  const audioCache: Record<string, string> = {};
+): Promise<{ success: boolean; audioUrl?: string }> {
+  console.log(`[BG-TTS] Processing book ${bookId}`);
 
-  // Generate female voice
-  console.log('[BG-AUDIO] Generating female voice for new book...');
-  const femaleAudio = await generateAudioWithRetry(
+  // If no summaryId, find it
+  let targetSummaryId = summaryId;
+  if (!targetSummaryId) {
+    const { data: summary } = await supabase
+      .from('summaries')
+      .select('id')
+      .eq('book_id', bookId)
+      .maybeSingle();
+    
+    if (summary) {
+      targetSummaryId = summary.id;
+    }
+  }
+
+  if (!targetSummaryId) {
+    console.error(`[BG-TTS] No summary found for book ${bookId}`);
+    return { success: false };
+  }
+
+  // Generate audio with female voice (default)
+  const audioData = await generateAudioWithAzure(
     summaryContent,
     FEMALE_VOICE,
     azureKey,
     azureRegion
   );
-  if (femaleAudio) {
-    audioCache[FEMALE_VOICE] = femaleAudio;
-    // Save immediately
-    await supabase
-      .from('summaries')
-      .update({ audio_url: JSON.stringify(audioCache) })
-      .eq('book_id', bookId);
+
+  if (!audioData) {
+    return { success: false };
   }
 
-  // Wait before male voice
-  await sleep(5000);
-
-  // Generate male voice
-  console.log('[BG-AUDIO] Generating male voice for new book...');
-  const maleAudio = await generateAudioWithRetry(
-    summaryContent,
-    MALE_VOICE,
-    azureKey,
-    azureRegion
+  const audioUrl = await uploadAudioAndUpdate(
+    supabase,
+    audioData,
+    bookId,
+    targetSummaryId,
+    FEMALE_VOICE
   );
-  if (maleAudio) {
-    audioCache[MALE_VOICE] = maleAudio;
+
+  return { success: !!audioUrl, audioUrl: audioUrl || undefined };
+}
+
+// Get summaries that need audio
+async function getSummariesNeedingAudio(supabase: SupabaseClient): Promise<Summary[]> {
+  const { data, error } = await supabase
+    .from('summaries')
+    .select('id, book_id, content, audio_url')
+    .is('audio_url', null)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error('[BG-TTS] Error fetching summaries:', error);
+    return [];
   }
 
-  if (Object.keys(audioCache).length > 0) {
-    const { error: updateError } = await supabase
-      .from('summaries')
-      .update({ audio_url: JSON.stringify(audioCache) })
-      .eq('book_id', bookId);
-
-    if (updateError) {
-      console.error(`[BG-AUDIO] Update failed for book ${bookId}:`, updateError);
-      return { success: false, error: updateError.message };
-    }
-    
-    console.log(`[BG-AUDIO] Cached ${Object.keys(audioCache).length} voices for book ${bookId}`);
-    return { success: true, voicesGenerated: Object.keys(audioCache).length };
-  }
-
-  return { success: false, error: 'No audio generated' };
+  return data || [];
 }
 
 declare const EdgeRuntime: {
@@ -303,13 +245,13 @@ serve(async (req) => {
   }
 
   try {
-    const AZURE_TTS_KEY = Deno.env.get("AZURE_TTS_KEY");
-    const AZURE_TTS_REGION = Deno.env.get("AZURE_TTS_REGION") || "francecentral";
+    const AZURE_TTS_KEY = Deno.env.get("AZURE_TTS_KEY") || Deno.env.get("AZURE_SPEECH_KEY");
+    const AZURE_TTS_REGION = Deno.env.get("AZURE_TTS_REGION") || Deno.env.get("AZURE_SPEECH_REGION") || "eastus";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!AZURE_TTS_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("[BG-AUDIO] Missing environment variables");
+      console.error("[BG-TTS] Missing environment variables");
       return new Response(
         JSON.stringify({ error: "Server configuration error" }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -318,7 +260,9 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const body = await req.json().catch(() => ({}));
-    const { bookId, summaryContent, action } = body;
+    const { bookId, summaryContent, summaryId, action } = body;
+
+    console.log(`[BG-TTS] Request:`, { bookId, action, hasSummaryContent: !!summaryContent });
 
     // Action: Process ONE book that needs audio
     if (action === 'processOne') {
@@ -336,11 +280,18 @@ serve(async (req) => {
         );
       }
 
-      // Process just the first one in background
       const summary = summariesNeedingAudio[0];
       
+      // Process in background
       EdgeRuntime.waitUntil(
-        processSingleSummary(supabase, summary, AZURE_TTS_KEY, AZURE_TTS_REGION)
+        processSingleBook(
+          supabase, 
+          summary.book_id, 
+          summary.content, 
+          summary.id,
+          AZURE_TTS_KEY, 
+          AZURE_TTS_REGION
+        )
       );
       
       return new Response(
@@ -359,36 +310,16 @@ serve(async (req) => {
     if (action === 'status') {
       const { data: allSummaries } = await supabase
         .from('summaries')
-        .select('id, book_id, audio_url');
+        .select('id, audio_url');
 
-      const summaries = (allSummaries || []) as Summary[];
-
-      let withAudio = 0;
-      let withoutAudio = 0;
-      let partial = 0;
-
-      for (const s of summaries) {
-        if (!s.audio_url) {
-          withoutAudio++;
-          continue;
-        }
-        try {
-          const data = typeof s.audio_url === 'string' ? JSON.parse(s.audio_url) : s.audio_url;
-          const hasFemale = data[FEMALE_VOICE]?.length > 100;
-          const hasMale = data[MALE_VOICE]?.length > 100;
-          if (hasFemale && hasMale) withAudio++;
-          else if (hasFemale || hasMale) partial++;
-          else withoutAudio++;
-        } catch {
-          withoutAudio++;
-        }
-      }
+      const summaries = (allSummaries || []) as { id: string; audio_url: string | null }[];
+      const withAudio = summaries.filter(s => s.audio_url && s.audio_url.length > 10).length;
+      const withoutAudio = summaries.length - withAudio;
 
       return new Response(
         JSON.stringify({ 
           total: summaries.length,
           withAudio,
-          partial,
           withoutAudio,
           percentComplete: summaries.length 
             ? Math.round((withAudio / summaries.length) * 100) 
@@ -400,8 +331,16 @@ serve(async (req) => {
 
     // Action: Generate audio for a specific book (called from generate-summary)
     if (bookId && summaryContent) {
+      // Process in background
       EdgeRuntime.waitUntil(
-        processSingleBook(supabase, bookId, summaryContent, AZURE_TTS_KEY, AZURE_TTS_REGION)
+        processSingleBook(
+          supabase, 
+          bookId, 
+          summaryContent, 
+          summaryId || null,
+          AZURE_TTS_KEY, 
+          AZURE_TTS_REGION
+        )
       );
 
       return new Response(
@@ -427,7 +366,7 @@ serve(async (req) => {
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
-    console.error("[BG-AUDIO] Error:", errorMessage);
+    console.error("[BG-TTS] Error:", errorMessage);
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
