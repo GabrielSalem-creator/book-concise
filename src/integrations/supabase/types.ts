@@ -389,9 +389,7 @@ export type Database = {
       }
       summaries: {
         Row: {
-          audio_generated_at: string | null
           audio_url: string | null
-          audio_voice: string | null
           book_id: string
           content: string
           created_at: string
@@ -402,9 +400,7 @@ export type Database = {
           is_public: boolean | null
         }
         Insert: {
-          audio_generated_at?: string | null
           audio_url?: string | null
-          audio_voice?: string | null
           book_id: string
           content: string
           created_at?: string
@@ -415,9 +411,7 @@ export type Database = {
           is_public?: boolean | null
         }
         Update: {
-          audio_generated_at?: string | null
           audio_url?: string | null
-          audio_voice?: string | null
           book_id?: string
           content?: string
           created_at?: string

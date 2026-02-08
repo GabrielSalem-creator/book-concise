@@ -29,9 +29,3 @@ verify_jwt = false
 
 [functions.approve-subscription]
 verify_jwt = false
-
-[functions.generate-tts-audio]
-verify_jwt = false
-
-[functions.generate-audio-background]
-verify_jwt = false

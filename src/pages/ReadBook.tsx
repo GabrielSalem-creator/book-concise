@@ -11,8 +11,6 @@ import PdfViewerDialog from "@/components/PdfViewerDialog";
 import AudioPlayerCard from "@/components/AudioPlayerCard";
 
 const ReadBook = () => {
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [summaryId, setSummaryId] = useState<string | null>(null);
   const { bookId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -115,23 +113,14 @@ const ReadBook = () => {
     
     const { data: existingBook } = await supabase
       .from('books')
-      .select(`*, summaries (id, content, audio_url)`)
+      .select(`*, summaries (content)`)
       .eq('id', bookId)
       .single();
 
     if (existingBook && existingBook.summaries && existingBook.summaries.length > 0) {
       setBook(existingBook);
-      const summaryData = existingBook.summaries[0] as any;
-      const cleanSummary = cleanMarkdown(summaryData.content);
+      const cleanSummary = cleanMarkdown(existingBook.summaries[0].content);
       setSummary(cleanSummary);
-      setSummaryId(summaryData.id);
-      setAudioUrl(summaryData.audio_url || null);
-      
-      // Trigger audio generation if not available
-      if (!summaryData.audio_url && summaryData.id) {
-        triggerAudioGeneration(summaryData.id);
-      }
-      
       setIsLoading(false);
       return;
     }
@@ -230,7 +219,7 @@ const ReadBook = () => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('books')
-      .select(`*, summaries (id, content, audio_url)`)
+      .select(`*, summaries (content)`)
       .eq('id', bookId)
       .single();
 
@@ -247,16 +236,7 @@ const ReadBook = () => {
     setBook(data);
     
     if (data.summaries && data.summaries.length > 0) {
-      const summaryData = data.summaries[0] as any;
-      setSummary(cleanMarkdown(summaryData.content));
-      setSummaryId(summaryData.id);
-      setAudioUrl(summaryData.audio_url || null);
-      
-      // Trigger audio generation if not available
-      if (!summaryData.audio_url && summaryData.id) {
-        triggerAudioGeneration(summaryData.id);
-      }
-      
+      setSummary(cleanMarkdown(data.summaries[0].content));
       setIsLoading(false);
       return;
     }
@@ -276,34 +256,7 @@ const ReadBook = () => {
     }
 
     setSummary(cleanMarkdown(summaryData.summary));
-    
-    // Fetch the summary ID and trigger audio generation
-    if (summaryData.summaryId) {
-      setSummaryId(summaryData.summaryId);
-      triggerAudioGeneration(summaryData.summaryId);
-    }
-    
     setIsLoading(false);
-  };
-
-  const triggerAudioGeneration = async (targetSummaryId: string) => {
-    try {
-      console.log('Triggering audio generation for summary:', targetSummaryId);
-      const { data, error } = await supabase.functions.invoke('generate-tts-audio', {
-        body: { summaryId: targetSummaryId, voice: 'en-US-AvaNeural' }
-      });
-      
-      if (error) {
-        console.error('Audio generation error:', error);
-        return;
-      }
-      
-      if (data?.audioUrl) {
-        setAudioUrl(data.audioUrl);
-      }
-    } catch (err) {
-      console.error('Failed to trigger audio generation:', err);
-    }
   };
 
   const cleanMarkdown = (text: string) => {
@@ -784,7 +737,6 @@ const ReadBook = () => {
               <AudioPlayerCard
                 bookId={bookId}
                 summary={summary}
-                audioUrl={audioUrl}
                 onProgress={async (prog) => {
                   setProgress(prog);
                   if (readingSessionId && Math.floor(prog) % 10 === 0) {
