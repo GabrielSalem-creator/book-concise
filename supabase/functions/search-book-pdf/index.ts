@@ -9,6 +9,40 @@ const corsHeaders = {
 
 const SCRAPER_API = "https://v0-marsupilami-scraper.vercel.app/api/scrape";
 
+// Parse SSE streaming response to extract final JSON data
+async function parseSSEResponse(response: Response): Promise<any> {
+  const text = await response.text();
+  console.log('[search-book-pdf] Raw response length:', text.length);
+
+  const lines = text.split('\n');
+  let lastData: any = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('data: ')) {
+      const jsonStr = trimmed.slice(6);
+      try {
+        const parsed = JSON.parse(jsonStr);
+        lastData = parsed;
+      } catch {
+        // partial or non-JSON data line, skip
+      }
+    }
+  }
+
+  // If no SSE data found, try parsing the whole text as JSON
+  if (!lastData) {
+    try {
+      lastData = JSON.parse(text);
+    } catch {
+      console.error('[search-book-pdf] Could not parse response:', text.substring(0, 500));
+      throw new Error('Could not parse scraper response');
+    }
+  }
+
+  return lastData;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -22,7 +56,6 @@ serve(async (req) => {
       throw new Error('Book name is required');
     }
 
-    // Search for PDF URLs using marsupilami scraper
     const searchResponse = await fetch(SCRAPER_API, {
       method: 'POST',
       headers: {
@@ -31,7 +64,7 @@ serve(async (req) => {
         'Origin': 'https://v0-marsupilami-scraper.vercel.app',
         'Referer': 'https://v0-marsupilami-scraper.vercel.app/'
       },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         query: `${bookName} pdf url`,
         num_results: 10
       })
@@ -39,65 +72,59 @@ serve(async (req) => {
 
     if (!searchResponse.ok) {
       const errorText = await searchResponse.text();
-      console.error('[search-book-pdf] Scraper error:', errorText);
-      throw new Error(`Search failed: ${searchResponse.status} ${searchResponse.statusText}`);
+      console.error('[search-book-pdf] Scraper error:', errorText.substring(0, 200));
+      throw new Error(`Search failed: ${searchResponse.status}`);
     }
 
-    const contentType = searchResponse.headers.get('Content-Type') || '';
-    if (!contentType.includes('json')) {
-      const text = await searchResponse.text();
-      console.error('[search-book-pdf] Non-JSON response:', text.substring(0, 200));
-      throw new Error('Search returned non-JSON response');
-    }
+    const result = await parseSSEResponse(searchResponse);
+    console.log('[search-book-pdf] Parsed result type:', typeof result, Array.isArray(result) ? 'array' : '');
 
-    const result = await searchResponse.json();
-    console.log('[search-book-pdf] Search result received');
-
-    // Extract PDF URLs from results
+    // Collect all URLs from various response shapes
+    const allUrls: string[] = [];
     const pdfUrls: string[] = [];
 
-    // Handle array of results
     if (Array.isArray(result)) {
       for (const item of result) {
         const url = item.url || item.link || item.href;
-        if (typeof url === 'string' && url.toLowerCase().endsWith('.pdf') && !pdfUrls.includes(url)) {
-          pdfUrls.push(url);
-        }
+        if (typeof url === 'string') allUrls.push(url);
       }
     }
 
-    // Handle object with results array
-    if (result.results && Array.isArray(result.results)) {
+    if (result?.results && Array.isArray(result.results)) {
       for (const item of result.results) {
         const url = item.url || item.link || item.href;
-        if (typeof url === 'string' && url.toLowerCase().endsWith('.pdf') && !pdfUrls.includes(url)) {
-          pdfUrls.push(url);
-        }
+        if (typeof url === 'string') allUrls.push(url);
       }
     }
 
-    // Also check for source field
-    if (result.source && typeof result.source === 'string' && result.source.toLowerCase().endsWith('.pdf')) {
-      if (!pdfUrls.includes(result.source)) {
-        pdfUrls.push(result.source);
-      }
+    if (result?.source && typeof result.source === 'string') {
+      allUrls.push(result.source);
     }
 
-    // Check debug/search_results if present
-    if (result.debug?.search_results && Array.isArray(result.debug.search_results)) {
+    if (result?.debug?.search_results && Array.isArray(result.debug.search_results)) {
       for (const url of result.debug.search_results) {
-        if (typeof url === 'string' && url.toLowerCase().endsWith('.pdf') && !pdfUrls.includes(url)) {
-          pdfUrls.push(url);
-        }
+        if (typeof url === 'string') allUrls.push(url);
       }
     }
 
-    console.log(`[search-book-pdf] Found ${pdfUrls.length} PDF URLs`);
+    // Filter for PDF URLs - check .pdf extension or /pdf/ in path
+    for (const url of allUrls) {
+      const lower = url.toLowerCase();
+      const isPdf = lower.endsWith('.pdf') || lower.includes('.pdf?') || lower.includes('/pdf/') || lower.includes('pdf_url');
+      if (isPdf && !pdfUrls.includes(url)) {
+        pdfUrls.push(url);
+      }
+    }
+
+    // If no direct PDF links found, return all URLs so the caller can try them
+    const urlsToReturn = pdfUrls.length > 0 ? pdfUrls : allUrls.filter((u, i, a) => a.indexOf(u) === i);
+
+    console.log(`[search-book-pdf] Found ${pdfUrls.length} PDF URLs from ${allUrls.length} total URLs, returning ${urlsToReturn.length}`);
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
-        pdfUrls,
+        pdfUrls: urlsToReturn,
         bookName
       }),
       {
@@ -108,9 +135,9 @@ serve(async (req) => {
   } catch (error) {
     console.error('[search-book-pdf] Error:', error);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error' 
+        error: error instanceof Error ? error.message : 'Unknown error'
       }),
       {
         status: 500,
