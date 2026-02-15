@@ -47,6 +47,47 @@ export default function AudioPlayerCard({
   const isMountedRef = useRef(true);
   const seekTargetRef = useRef<number | null>(null);
 
+  // Detect language from summary text
+  const detectLanguage = useCallback((text: string): string => {
+    if (!text) return 'en';
+    const sample = text.substring(0, 500).toLowerCase();
+    
+    // French indicators
+    const frenchWords = ['le', 'la', 'les', 'de', 'des', 'un', 'une', 'du', 'et', 'est', 'que', 'qui', 'dans', 'pour', 'avec', 'sur', 'pas', 'ce', 'cette', 'sont', 'ont', 'mais', 'aussi', 'comme', 'nous', 'vous', 'leur', 'très', 'être', 'avoir', 'fait', 'peut', 'tout', 'plus'];
+    const spanishWords = ['el', 'la', 'los', 'las', 'de', 'del', 'en', 'un', 'una', 'que', 'es', 'por', 'con', 'para', 'como', 'más', 'pero', 'sus', 'este', 'esta', 'son', 'tiene', 'también', 'fue', 'sobre', 'todo', 'entre', 'desde', 'puede', 'hay'];
+    const germanWords = ['der', 'die', 'das', 'und', 'ist', 'ein', 'eine', 'den', 'dem', 'nicht', 'sich', 'mit', 'auf', 'für', 'von', 'werden', 'haben', 'sind', 'auch', 'nach', 'wird', 'bei', 'einer', 'über', 'noch', 'kann', 'aus', 'aber', 'wie', 'wenn'];
+    const portugueseWords = ['de', 'que', 'não', 'uma', 'para', 'com', 'por', 'mais', 'como', 'mas', 'dos', 'das', 'foi', 'são', 'este', 'esta', 'tem', 'também', 'seu', 'sua', 'quando', 'muito', 'nos', 'já', 'pode', 'depois', 'isso', 'ela', 'entre', 'era'];
+    const italianWords = ['di', 'che', 'il', 'la', 'per', 'con', 'una', 'non', 'del', 'nel', 'sono', 'gli', 'anche', 'come', 'più', 'questo', 'questa', 'alla', 'della', 'delle', 'degli', 'alle', 'stato', 'essere', 'hanno', 'fatto', 'dopo', 'tutto', 'aveva', 'molto'];
+    const arabicPattern = /[\u0600-\u06FF]/;
+    const chinesePattern = /[\u4E00-\u9FFF]/;
+    const japanesePattern = /[\u3040-\u309F\u30A0-\u30FF]/;
+    const koreanPattern = /[\uAC00-\uD7AF]/;
+    const russianPattern = /[\u0400-\u04FF]/;
+
+    if (arabicPattern.test(sample)) return 'ar';
+    if (chinesePattern.test(sample)) return 'zh';
+    if (japanesePattern.test(sample)) return 'ja';
+    if (koreanPattern.test(sample)) return 'ko';
+    if (russianPattern.test(sample)) return 'ru';
+
+    const words = sample.split(/\s+/);
+    const countMatches = (langWords: string[]) => words.filter(w => langWords.includes(w.replace(/[.,!?;:'"]/g, ''))).length;
+
+    const scores = [
+      { lang: 'fr', score: countMatches(frenchWords) },
+      { lang: 'es', score: countMatches(spanishWords) },
+      { lang: 'de', score: countMatches(germanWords) },
+      { lang: 'pt', score: countMatches(portugueseWords) },
+      { lang: 'it', score: countMatches(italianWords) },
+    ];
+
+    const best = scores.sort((a, b) => b.score - a.score)[0];
+    // Need a reasonable threshold to avoid false positives
+    if (best.score >= 5) return best.lang;
+    
+    return 'en';
+  }, []);
+
   // Load voices on mount
   useEffect(() => {
     isMountedRef.current = true;
@@ -55,38 +96,44 @@ export default function AudioPlayerCard({
       if (!('speechSynthesis' in window)) return;
       
       const availableVoices = window.speechSynthesis.getVoices();
-      if (availableVoices.length > 0) {
-        const englishVoices = availableVoices
-          .filter(v => v.lang.startsWith('en'))
-          .sort((a, b) => {
-            const aGoogle = a.name.toLowerCase().includes('google');
-            const bGoogle = b.name.toLowerCase().includes('google');
-            if (aGoogle && !bGoogle) return -1;
-            if (!aGoogle && bGoogle) return 1;
-            return a.name.localeCompare(b.name);
-          });
+      if (availableVoices.length === 0) return;
 
-        const voicePool = englishVoices.length > 0 ? englishVoices : availableVoices;
-        setVoices(voicePool);
+      const detectedLang = detectLanguage(summary);
+      console.log('[AudioPlayer] Detected language:', detectedLang);
 
-        if (!selectedVoice) {
-          const priorities = [
-            (v: SpeechSynthesisVoice) => v.name === 'Google US English',
-            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('female'),
-            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('google') && v.lang === 'en-US',
-            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('google'),
-            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('samantha'),
-            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('karen'),
-            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('victoria'),
-          ];
-          
-          let bestVoice: SpeechSynthesisVoice | undefined;
-          for (const pred of priorities) {
-            bestVoice = voicePool.find(pred);
-            if (bestVoice) break;
-          }
-          
-          setSelectedVoice((bestVoice || voicePool[0])?.name || '');
+      // Filter voices for the detected language
+      const langVoices = availableVoices
+        .filter(v => v.lang.startsWith(detectedLang))
+        .sort((a, b) => {
+          const aGoogle = a.name.toLowerCase().includes('google');
+          const bGoogle = b.name.toLowerCase().includes('google');
+          if (aGoogle && !bGoogle) return -1;
+          if (!aGoogle && bGoogle) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+      // Fallback to English if no voices found for detected language
+      const englishVoices = availableVoices
+        .filter(v => v.lang.startsWith('en'))
+        .sort((a, b) => {
+          const aGoogle = a.name.toLowerCase().includes('google');
+          const bGoogle = b.name.toLowerCase().includes('google');
+          if (aGoogle && !bGoogle) return -1;
+          if (!aGoogle && bGoogle) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+      const voicePool = langVoices.length > 0 ? langVoices : (englishVoices.length > 0 ? englishVoices : availableVoices);
+      setVoices(voicePool);
+
+      if (!selectedVoice) {
+        // Pick the best Google voice for the language, or fallback
+        const googleVoice = voicePool.find(v => v.name.toLowerCase().includes('google'));
+        const bestVoice = googleVoice || voicePool[0];
+        
+        if (bestVoice) {
+          console.log('[AudioPlayer] Selected voice:', bestVoice.name, 'lang:', bestVoice.lang);
+          setSelectedVoice(bestVoice.name);
         }
       }
     };
@@ -101,7 +148,7 @@ export default function AudioPlayerCard({
       isMountedRef.current = false;
       cleanup();
     };
-  }, []);
+  }, [summary]);
 
   const cleanup = useCallback(() => {
     if ('speechSynthesis' in window) {
