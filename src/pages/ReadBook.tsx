@@ -29,6 +29,8 @@ const ReadBook = () => {
   const hasCompletedRef = useRef(false);
   const [isSearchingPdf, setIsSearchingPdf] = useState(false);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
+  const [bookViewUrl, setBookViewUrl] = useState<string | null>(null);
+  const [isBookViewEmbed, setIsBookViewEmbed] = useState(false);
 
   // Cleanup Web Speech API on unmount
   useEffect(() => {
@@ -636,14 +638,25 @@ const ReadBook = () => {
           .eq('id', book.id);
         
         setBook({ ...book, pdf_url: data.pdfUrls[0] });
+        setBookViewUrl(data.pdfUrls[0]);
+        setIsBookViewEmbed(false);
         
         toast({
           title: "PDF Found!",
           description: `Found ${data.pdfUrls.length} PDF source(s)`,
         });
+      } else {
+        // Fallback: Use Google Books embed
+        const googleBooksUrl = `https://www.google.com/books?q=${encodeURIComponent(searchQuery)}&btnG=Search+Books`;
+        setBookViewUrl(googleBooksUrl);
+        setIsBookViewEmbed(true);
       }
     } catch (error) {
       console.error('Error searching for PDF:', error);
+      // Still provide a fallback
+      const fallbackQuery = book.author ? `${book.title} ${book.author}` : book.title;
+      setBookViewUrl(`https://www.google.com/books?q=${encodeURIComponent(fallbackQuery)}&btnG=Search+Books`);
+      setIsBookViewEmbed(true);
     } finally {
       setIsSearchingPdf(false);
     }
@@ -682,7 +695,7 @@ const ReadBook = () => {
             </Button>
             
             <div className="flex-1 min-w-0">
-              {book.pdf_url ? (
+              {(book.pdf_url || bookViewUrl) ? (
                 <button
                   onClick={() => setIsPdfViewerOpen(true)}
                   className="text-left group cursor-pointer"
@@ -694,7 +707,7 @@ const ReadBook = () => {
                   </h1>
                   <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 group-hover:text-primary/70 transition-colors">
                     <Eye className="w-3 h-3" />
-                    <span>Click to preview PDF</span>
+                    <span>{book.pdf_url ? 'Click to preview PDF' : 'Click to view book'}</span>
                   </p>
                 </button>
               ) : (
@@ -705,7 +718,7 @@ const ReadBook = () => {
                   {isSearchingPdf && (
                     <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Finding PDF...</span>
+                      <span>Finding book...</span>
                     </p>
                   )}
                 </div>
@@ -715,26 +728,28 @@ const ReadBook = () => {
               )}
             </div>
 
-            {book.pdf_url && (
+            {(book.pdf_url || bookViewUrl) && (
               <div className="flex items-center gap-2">
                 <Button
                   onClick={() => setIsPdfViewerOpen(true)}
                   size="sm"
                   variant="outline"
                   className="shrink-0 h-9 sm:h-10 px-3 rounded-full border-primary/30 hover:bg-primary/10 hover:border-primary/50 transition-all"
-                  aria-label="Preview PDF"
+                  aria-label="Preview book"
                 >
                   <Eye className="w-4 h-4 mr-1.5" />
-                  <span className="hidden sm:inline">Preview</span>
+                  <span className="hidden sm:inline">{book.pdf_url ? 'Preview' : 'View'}</span>
                 </Button>
-                <Button
-                  onClick={handleDownloadPDF}
-                  size="icon"
-                  className="shrink-0 h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-secondary via-primary to-accent hover:opacity-90 shadow-lg hover:shadow-xl transition-all hover:scale-105"
-                  aria-label="Download PDF"
-                >
-                  <Download className="w-4 h-4" />
-                </Button>
+                {book.pdf_url && (
+                  <Button
+                    onClick={handleDownloadPDF}
+                    size="icon"
+                    className="shrink-0 h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-secondary via-primary to-accent hover:opacity-90 shadow-lg hover:shadow-xl transition-all hover:scale-105"
+                    aria-label="Download PDF"
+                  >
+                    <Download className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -836,14 +851,15 @@ const ReadBook = () => {
         />
       )}
 
-      {/* PDF Viewer Dialog */}
-      {book.pdf_url && (
+      {/* PDF / Book Viewer Dialog */}
+      {(book.pdf_url || bookViewUrl) && (
         <PdfViewerDialog
           isOpen={isPdfViewerOpen}
           onClose={() => setIsPdfViewerOpen(false)}
-          pdfUrl={book.pdf_url}
+          pdfUrl={book.pdf_url || bookViewUrl!}
           title={book.title}
           author={book.author}
+          isEmbed={isBookViewEmbed}
         />
       )}
 
