@@ -40,6 +40,7 @@ export default function AudioPlayerCard({
   const [playbackRate, setPlaybackRate] = useState('1');
   const [selectedVoice, setSelectedVoice] = useState('');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [detectedLanguage, setDetectedLanguage] = useState('en');
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -99,6 +100,7 @@ export default function AudioPlayerCard({
       if (availableVoices.length === 0) return;
 
       const detectedLang = detectLanguage(summary);
+      setDetectedLanguage(detectedLang);
       console.log('[AudioPlayer] Detected language:', detectedLang);
 
       // Filter voices for the detected language
@@ -349,6 +351,7 @@ export default function AudioPlayerCard({
             selectedVoice={selectedVoice}
             onVoiceChange={setSelectedVoice}
             disabled={isPlaying || isLoading}
+            language={detectedLanguage}
           />
         </div>
         <div className="flex items-center gap-2">
