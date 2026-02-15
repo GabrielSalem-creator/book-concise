@@ -7,46 +7,82 @@ interface VoiceSelectorProps {
   selectedVoice: string;
   onVoiceChange: (voice: string) => void;
   disabled?: boolean;
+  language?: string; // e.g. 'en', 'fr', 'es', 'de', etc.
 }
 
-// Define our 2 preferred voice options with priority-ordered keywords
-// Google voices are highest quality, then Apple (Samantha/Daniel), then Microsoft (Zira/David)
-const PREFERRED_VOICES = [
-  { id: "female", label: "Sara", keywords: ["google us english", "google uk english female", "samantha", "karen", "victoria", "zira", "sara", "female"] },
-  { id: "male", label: "James", keywords: ["google uk english male", "google us english male", "daniel", "alex", "tom", "david", "james", "male"] },
-];
+// Language-specific voice labels
+const VOICE_LABELS: Record<string, { female: string; male: string }> = {
+  en: { female: "Sara", male: "James" },
+  fr: { female: "Marie", male: "Pierre" },
+  es: { female: "Lucía", male: "Carlos" },
+  de: { female: "Anna", male: "Hans" },
+  pt: { female: "Ana", male: "Pedro" },
+  it: { female: "Giulia", male: "Marco" },
+  ar: { female: "Fatima", male: "Ahmed" },
+  zh: { female: "Mei", male: "Wei" },
+  ja: { female: "Sakura", male: "Kenji" },
+  ko: { female: "Soo-Jin", male: "Min-Jun" },
+  ru: { female: "Natasha", male: "Ivan" },
+};
+
+const PREVIEW_TEXTS: Record<string, string> = {
+  en: "Hello! This is how I sound when reading your book.",
+  fr: "Bonjour ! Voici comment je lis votre livre.",
+  es: "¡Hola! Así es como sueno al leer tu libro.",
+  de: "Hallo! So klinge ich beim Vorlesen Ihres Buches.",
+  pt: "Olá! É assim que eu soo ao ler o seu livro.",
+  it: "Ciao! Ecco come suono quando leggo il tuo libro.",
+  ar: "مرحبًا! هذه هي الطريقة التي أبدو بها عند قراءة كتابك.",
+  zh: "你好！这就是我朗读你的书时的声音。",
+  ja: "こんにちは！これが本を読むときの私の声です。",
+  ko: "안녕하세요! 이것이 제가 책을 읽을 때 나는 소리입니다.",
+  ru: "Привет! Вот как я звучу, когда читаю вашу книгу.",
+};
 
 export const VoiceSelector = ({
   selectedVoice,
   onVoiceChange,
   disabled = false,
+  language = "en",
 }: VoiceSelectorProps) => {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("female");
+
+  const labels = VOICE_LABELS[language] || VOICE_LABELS.en;
 
   useEffect(() => {
     const loadVoices = () => {
       if (!('speechSynthesis' in window)) return;
       
       const availableVoices = window.speechSynthesis.getVoices();
-      if (availableVoices.length > 0) {
-        // Filter to English voices
-        const englishVoices = availableVoices.filter(v => v.lang.startsWith('en'));
-        setVoices(englishVoices.length > 0 ? englishVoices : availableVoices);
+      if (availableVoices.length === 0) return;
 
-        // Auto-select female voice on first load
-        if (!selectedVoice) {
-          const femaleVoice = findVoiceByType("female", englishVoices.length > 0 ? englishVoices : availableVoices);
-          if (femaleVoice) {
-            onVoiceChange(femaleVoice.name);
-            setSelectedType("female");
-          }
-        } else {
-          // Determine which type the current voice is
-          const currentType = detectVoiceType(selectedVoice);
-          setSelectedType(currentType);
-        }
+      // Filter voices for detected language first, fallback to English
+      let langVoices = availableVoices.filter(v => v.lang.startsWith(language));
+      if (langVoices.length === 0) {
+        langVoices = availableVoices.filter(v => v.lang.startsWith('en'));
+      }
+      if (langVoices.length === 0) {
+        langVoices = availableVoices;
+      }
+
+      // Sort: Google voices first
+      langVoices.sort((a, b) => {
+        const aG = a.name.toLowerCase().includes('google');
+        const bG = b.name.toLowerCase().includes('google');
+        if (aG && !bG) return -1;
+        if (!aG && bG) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      setVoices(langVoices);
+
+      // Auto-select best voice
+      const femaleVoice = findVoiceByGender("female", langVoices);
+      if (femaleVoice && !selectedVoice) {
+        onVoiceChange(femaleVoice.name);
+        setSelectedType("female");
       }
     };
 
@@ -55,33 +91,33 @@ export const VoiceSelector = ({
     if ('speechSynthesis' in window && window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
-  }, [selectedVoice, onVoiceChange]);
+  }, [language, selectedVoice, onVoiceChange]);
 
-  const findVoiceByType = (type: string, voiceList: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined => {
-    const pref = PREFERRED_VOICES.find(v => v.id === type);
-    if (!pref) return voiceList[0];
-
-    // Search keywords in priority order - first match wins (Google first, then premium system voices)
-    for (const keyword of pref.keywords) {
-      const match = voiceList.find(v => v.name.toLowerCase().includes(keyword));
-      if (match) return match;
+  const findVoiceByGender = (gender: string, voiceList: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined => {
+    const googleVoices = voiceList.filter(v => v.name.toLowerCase().includes('google'));
+    
+    if (gender === "female") {
+      // Try Google female first
+      const googleFemale = googleVoices.find(v => v.name.toLowerCase().includes('female'));
+      if (googleFemale) return googleFemale;
+      // First Google voice as fallback (often female)
+      if (googleVoices.length > 0) return googleVoices[0];
+      return voiceList[0];
+    } else {
+      // Try Google male
+      const googleMale = googleVoices.find(v => v.name.toLowerCase().includes('male'));
+      if (googleMale) return googleMale;
+      // Second Google voice as fallback
+      if (googleVoices.length > 1) return googleVoices[1];
+      if (googleVoices.length > 0) return googleVoices[0];
+      return voiceList[1] || voiceList[0];
     }
-
-    // Ultimate fallback: first or second voice based on type
-    return type === "female" ? voiceList[0] : voiceList[1] || voiceList[0];
-  };
-
-  const detectVoiceType = (voiceName: string): string => {
-    const name = voiceName.toLowerCase();
-    const maleKeywords = PREFERRED_VOICES.find(v => v.id === "male")?.keywords || [];
-    if (maleKeywords.some(k => name.includes(k))) return "male";
-    return "female";
   };
 
   const handleTypeChange = (type: string) => {
     if (!type) return;
     setSelectedType(type);
-    const voice = findVoiceByType(type, voices);
+    const voice = findVoiceByGender(type, voices);
     if (voice) {
       onVoiceChange(voice.name);
     }
@@ -93,11 +129,10 @@ export const VoiceSelector = ({
     window.speechSynthesis.cancel();
     setIsPreviewing(true);
 
-    const utterance = new SpeechSynthesisUtterance("Hello! This is how I sound when reading your book summaries.");
+    const previewText = PREVIEW_TEXTS[language] || PREVIEW_TEXTS.en;
+    const utterance = new SpeechSynthesisUtterance(previewText);
     const voice = voices.find(v => v.name === selectedVoice);
-    if (voice) {
-      utterance.voice = voice;
-    }
+    if (voice) utterance.voice = voice;
 
     utterance.onend = () => setIsPreviewing(false);
     utterance.onerror = () => setIsPreviewing(false);
@@ -119,15 +154,18 @@ export const VoiceSelector = ({
         disabled={disabled}
         className="bg-muted/50 p-1 rounded-xl"
       >
-        {PREFERRED_VOICES.map((voice) => (
-          <ToggleGroupItem
-            key={voice.id}
-            value={voice.id}
-            className="px-4 py-2 rounded-lg text-sm font-medium data-[state=on]:bg-primary data-[state=on]:text-primary-foreground transition-all"
-          >
-            {voice.label}
-          </ToggleGroupItem>
-        ))}
+        <ToggleGroupItem
+          value="female"
+          className="px-4 py-2 rounded-lg text-sm font-medium data-[state=on]:bg-primary data-[state=on]:text-primary-foreground transition-all"
+        >
+          {labels.female}
+        </ToggleGroupItem>
+        <ToggleGroupItem
+          value="male"
+          className="px-4 py-2 rounded-lg text-sm font-medium data-[state=on]:bg-primary data-[state=on]:text-primary-foreground transition-all"
+        >
+          {labels.male}
+        </ToggleGroupItem>
       </ToggleGroup>
 
       <Button
