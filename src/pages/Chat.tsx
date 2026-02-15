@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,7 +8,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Loader2, Send, Target, BookOpen, Home, Library as LibraryIcon, Compass, Sparkles, Book, Brain, Zap } from "lucide-react";
+import { Loader2, Send, Target, BookOpen, Home, Library as LibraryIcon, Compass, Sparkles, Book, Brain, Zap, MessageCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -220,7 +221,7 @@ const Chat = () => {
                   What's your goal?
                 </h2>
                 <p className="text-sm sm:text-base text-muted-foreground max-w-md mb-6 sm:mb-8 leading-relaxed">
-                  Tell me what you want to achieve and I'll create a personalized reading plan with the perfect books for you.
+                  Tell me what you want to achieve. I'll ask a few questions to understand your needs, then craft the perfect reading plan from the world's best books.
                 </p>
                 
                 {/* Suggested Goals Grid */}
@@ -240,10 +241,14 @@ const Chat = () => {
                   ))}
                 </div>
 
-                {/* Depth Info */}
+                {/* Conversational Info */}
                 <div className="mt-6 sm:mt-8 p-3 sm:p-4 rounded-xl bg-muted/30 border border-border/30 max-w-md">
+                  <div className="flex items-center gap-2 justify-center mb-1">
+                    <MessageCircle className="w-4 h-4 text-primary" />
+                    <span className="text-xs sm:text-sm font-medium text-foreground">Conversational & Personalized</span>
+                  </div>
                   <p className="text-xs sm:text-sm text-muted-foreground text-center">
-                    💡 <span className="font-medium">Tip:</span> After sharing your goal, I'll ask how deep you want to go — from a quick overview (1-2 books) to deep mastery (5-7 books)
+                    I'll ask thoughtful questions to understand exactly what you need before recommending books from my knowledge of thousands of titles worldwide.
                   </p>
                 </div>
               </div>
@@ -271,7 +276,13 @@ const Chat = () => {
                           <span className="text-xs font-semibold text-primary">AI Goal Coach</span>
                         </div>
                       )}
-                      <p className="whitespace-pre-wrap leading-relaxed text-sm sm:text-base">{msg.content}</p>
+                      <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed text-sm sm:text-base [&>p]:mb-2 [&>p:last-child]:mb-0">
+                        {msg.role === 'assistant' ? (
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        ) : (
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -284,7 +295,7 @@ const Chat = () => {
                           <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                           <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                         </div>
-                        <span className="text-sm text-muted-foreground">Creating your plan...</span>
+                        <span className="text-sm text-muted-foreground">Thinking...</span>
                       </div>
                     </div>
                   </div>
