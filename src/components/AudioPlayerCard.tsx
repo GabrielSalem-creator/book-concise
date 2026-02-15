@@ -63,13 +63,28 @@ export default function AudioPlayerCard({
             return a.name.localeCompare(b.name);
           });
 
-        setVoices(englishVoices.length > 0 ? englishVoices : availableVoices);
+        const voicePool = englishVoices.length > 0 ? englishVoices : availableVoices;
+        setVoices(voicePool);
 
         if (!selectedVoice) {
-          const googleVoice = englishVoices.find(v => 
-            v.name.toLowerCase().includes('google') && v.lang === 'en-US'
-          );
-          setSelectedVoice((googleVoice || englishVoices[0] || availableVoices[0])?.name || '');
+          // Priority order: Google US English > Google UK English Female > Samantha > any Google > first English
+          const priorities = [
+            (v: SpeechSynthesisVoice) => v.name === 'Google US English',
+            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('female'),
+            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('google') && v.lang === 'en-US',
+            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('google'),
+            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('samantha'),
+            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('karen'),
+            (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('victoria'),
+          ];
+          
+          let bestVoice: SpeechSynthesisVoice | undefined;
+          for (const pred of priorities) {
+            bestVoice = voicePool.find(pred);
+            if (bestVoice) break;
+          }
+          
+          setSelectedVoice((bestVoice || voicePool[0])?.name || '');
         }
       }
     };

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { BookmarkPlus, Share2, ArrowLeft, CheckCircle, Download, FileText, Headphones, Loader2, Eye } from "lucide-react";
+import MobileBottomNav from "@/components/MobileBottomNav";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -11,6 +13,7 @@ import PdfViewerDialog from "@/components/PdfViewerDialog";
 import AudioPlayerCard from "@/components/AudioPlayerCard";
 
 const ReadBook = () => {
+  const isMobile = useIsMobile();
   const { bookId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -834,6 +837,9 @@ const ReadBook = () => {
           author={book.author}
         />
       )}
+
+      <MobileBottomNav />
+      {isMobile && <div className="h-16" />}
     </div>
   );
 };
