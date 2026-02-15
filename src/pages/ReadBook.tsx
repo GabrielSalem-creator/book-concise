@@ -309,6 +309,13 @@ const ReadBook = () => {
       setReadingSessionId(data.id);
       setProgress(data.progress_percentage || 0);
     }
+    // Also restore last_position as a number if available
+    if (data?.last_position) {
+      const savedProgress = parseFloat(data.last_position);
+      if (!isNaN(savedProgress) && savedProgress > 0) {
+        setProgress(savedProgress);
+      }
+    }
   };
 
   const checkBookmark = async () => {
@@ -740,13 +747,15 @@ const ReadBook = () => {
               <AudioPlayerCard
                 bookId={bookId}
                 summary={summary}
+                initialProgress={progress}
                 onProgress={async (prog) => {
                   setProgress(prog);
-                  if (readingSessionId && Math.floor(prog) % 10 === 0) {
+                  if (readingSessionId) {
                     await supabase
                       .from('reading_sessions')
                       .update({ 
                         progress_percentage: prog,
+                        last_position: String(prog),
                         last_read_at: new Date().toISOString()
                       })
                       .eq('id', readingSessionId);
