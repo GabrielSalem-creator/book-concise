@@ -103,7 +103,22 @@ export default function AudioPlayerCard({
       setDetectedLanguage(detectedLang);
       console.log('[AudioPlayer] Detected language:', detectedLang);
 
-      // Filter voices for the detected language
+      // Language-specific best voice names (Google voices)
+      const googleVoiceMap: Record<string, string[]> = {
+        en: ['Google US English', 'Google UK English Female', 'Google UK English Male'],
+        fr: ['Google français', 'Google French'],
+        es: ['Google español', 'Google Spanish'],
+        de: ['Google Deutsch', 'Google German'],
+        pt: ['Google português do Brasil', 'Google Portuguese'],
+        it: ['Google italiano', 'Google Italian'],
+        ja: ['Google 日本語', 'Google Japanese'],
+        ko: ['Google 한국의', 'Google Korean'],
+        zh: ['Google 普通话（中国大陆）', 'Google Chinese'],
+        ru: ['Google русский', 'Google Russian'],
+        ar: ['Google العربية', 'Google Arabic'],
+      };
+
+      // Get all voices for detected language
       const langVoices = availableVoices
         .filter(v => v.lang.startsWith(detectedLang))
         .sort((a, b) => {
@@ -114,7 +129,7 @@ export default function AudioPlayerCard({
           return a.name.localeCompare(b.name);
         });
 
-      // Fallback to English if no voices found for detected language
+      // Fallback to English
       const englishVoices = availableVoices
         .filter(v => v.lang.startsWith('en'))
         .sort((a, b) => {
@@ -128,15 +143,27 @@ export default function AudioPlayerCard({
       const voicePool = langVoices.length > 0 ? langVoices : (englishVoices.length > 0 ? englishVoices : availableVoices);
       setVoices(voicePool);
 
-      if (!selectedVoice) {
-        // Pick the best Google voice for the language, or fallback
-        const googleVoice = voicePool.find(v => v.name.toLowerCase().includes('google'));
-        const bestVoice = googleVoice || voicePool[0];
-        
-        if (bestVoice) {
-          console.log('[AudioPlayer] Selected voice:', bestVoice.name, 'lang:', bestVoice.lang);
-          setSelectedVoice(bestVoice.name);
-        }
+      // Always set the best voice - try exact Google voice names first
+      const preferredNames = googleVoiceMap[detectedLang] || googleVoiceMap.en;
+      let bestVoice: SpeechSynthesisVoice | undefined;
+      
+      for (const name of preferredNames) {
+        bestVoice = availableVoices.find(v => v.name === name);
+        if (bestVoice) break;
+      }
+      
+      // Fallback: any Google voice for that language
+      if (!bestVoice) {
+        bestVoice = voicePool.find(v => v.name.toLowerCase().includes('google'));
+      }
+      // Final fallback: first available voice in pool
+      if (!bestVoice) {
+        bestVoice = voicePool[0];
+      }
+
+      if (bestVoice) {
+        console.log('[AudioPlayer] Selected voice:', bestVoice.name, 'lang:', bestVoice.lang);
+        setSelectedVoice(bestVoice.name);
       }
     };
 
