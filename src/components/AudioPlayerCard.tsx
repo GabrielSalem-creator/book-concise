@@ -99,70 +99,83 @@ export default function AudioPlayerCard({
       const availableVoices = window.speechSynthesis.getVoices();
       if (availableVoices.length === 0) return;
 
+      // Log all available voices for debugging
+      console.log('[AudioPlayer] Available voices:', availableVoices.map(v => `${v.name} (${v.lang})`).join(', '));
+
       const detectedLang = detectLanguage(summary);
       setDetectedLanguage(detectedLang);
       console.log('[AudioPlayer] Detected language:', detectedLang);
 
-      // Language-specific best voice names (Google voices)
-      const googleVoiceMap: Record<string, string[]> = {
-        en: ['Google US English', 'Google UK English Female', 'Google UK English Male'],
-        fr: ['Google français', 'Google French'],
-        es: ['Google español', 'Google Spanish'],
-        de: ['Google Deutsch', 'Google German'],
-        pt: ['Google português do Brasil', 'Google Portuguese'],
-        it: ['Google italiano', 'Google Italian'],
-        ja: ['Google 日本語', 'Google Japanese'],
-        ko: ['Google 한국의', 'Google Korean'],
-        zh: ['Google 普通话（中国大陆）', 'Google Chinese'],
-        ru: ['Google русский', 'Google Russian'],
-        ar: ['Google العربية', 'Google Arabic'],
+      // Premium voice priority list per language
+      // Order: Google HD > Apple premium (Samantha, Daniel, Thomas) > Microsoft > any
+      const premiumVoices: Record<string, string[]> = {
+        en: [
+          'Google US English', 'Google UK English Female', 'Google UK English Male',
+          'Samantha', 'Karen', 'Daniel', 'Moira', 'Tessa', 'Fiona',
+          'Microsoft Zira', 'Microsoft David', 'Microsoft Mark',
+          'Alex', 'Victoria', 'Ava', 'Allison', 'Susan',
+        ],
+        fr: [
+          'Google français', 'Thomas', 'Amélie', 'Audrey', 'Aurelie',
+          'Microsoft Julie', 'Microsoft Paul',
+        ],
+        es: [
+          'Google español', 'Monica', 'Paulina', 'Jorge', 'Diego',
+          'Microsoft Helena', 'Microsoft Pablo',
+        ],
+        de: [
+          'Google Deutsch', 'Anna', 'Petra', 'Markus', 'Yannick',
+          'Microsoft Hedda', 'Microsoft Stefan',
+        ],
+        pt: [
+          'Google português do Brasil', 'Luciana', 'Joana', 'Felipe',
+          'Microsoft Maria', 'Microsoft Daniel',
+        ],
+        it: [
+          'Google italiano', 'Alice', 'Federica', 'Luca', 'Paola',
+          'Microsoft Elsa', 'Microsoft Cosimo',
+        ],
+        ja: ['Google 日本語', 'Kyoko', 'Otoya', 'O-Ren', 'Hattori'],
+        ko: ['Google 한국의', 'Yuna', 'Sora'],
+        zh: ['Google 普通话（中国大陆）', 'Ting-Ting', 'Sin-Ji', 'Mei-Jia'],
+        ru: ['Google русский', 'Milena', 'Yuri', 'Katya'],
+        ar: ['Google العربية', 'Maged', 'Mariam'],
       };
 
-      // Get all voices for detected language
-      const langVoices = availableVoices
-        .filter(v => v.lang.startsWith(detectedLang))
-        .sort((a, b) => {
-          const aGoogle = a.name.toLowerCase().includes('google');
-          const bGoogle = b.name.toLowerCase().includes('google');
-          if (aGoogle && !bGoogle) return -1;
-          if (!aGoogle && bGoogle) return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-      // Fallback to English
-      const englishVoices = availableVoices
-        .filter(v => v.lang.startsWith('en'))
-        .sort((a, b) => {
-          const aGoogle = a.name.toLowerCase().includes('google');
-          const bGoogle = b.name.toLowerCase().includes('google');
-          if (aGoogle && !bGoogle) return -1;
-          if (!aGoogle && bGoogle) return 1;
-          return a.name.localeCompare(b.name);
-        });
-
+      // Get voices for detected language
+      const langVoices = availableVoices.filter(v => v.lang.startsWith(detectedLang));
+      const englishVoices = availableVoices.filter(v => v.lang.startsWith('en'));
       const voicePool = langVoices.length > 0 ? langVoices : (englishVoices.length > 0 ? englishVoices : availableVoices);
       setVoices(voicePool);
 
-      // Always set the best voice - try exact Google voice names first
-      const preferredNames = googleVoiceMap[detectedLang] || googleVoiceMap.en;
+      // Find the best voice by checking premium list in priority order
+      const priorityList = premiumVoices[detectedLang] || premiumVoices.en;
       let bestVoice: SpeechSynthesisVoice | undefined;
       
-      for (const name of preferredNames) {
-        bestVoice = availableVoices.find(v => v.name === name);
+      for (const name of priorityList) {
+        // Try exact match first
+        bestVoice = availableVoices.find(v => v.name === name && v.lang.startsWith(detectedLang));
+        if (bestVoice) break;
+        // Try partial match (some systems append extra info to voice names)
+        bestVoice = availableVoices.find(v => v.name.includes(name) && v.lang.startsWith(detectedLang));
         if (bestVoice) break;
       }
-      
-      // Fallback: any Google voice for that language
-      if (!bestVoice) {
-        bestVoice = voicePool.find(v => v.name.toLowerCase().includes('google'));
+
+      // If still no match for the detected language, try English premium voices
+      if (!bestVoice && detectedLang !== 'en') {
+        for (const name of premiumVoices.en) {
+          bestVoice = availableVoices.find(v => v.name === name || v.name.includes(name));
+          if (bestVoice) break;
+        }
       }
-      // Final fallback: first available voice in pool
+
+      // Ultimate fallback: first voice that contains "Google", or just first in pool
       if (!bestVoice) {
-        bestVoice = voicePool[0];
+        bestVoice = voicePool.find(v => v.name.toLowerCase().includes('google')) || voicePool[0];
       }
 
       if (bestVoice) {
-        console.log('[AudioPlayer] Selected voice:', bestVoice.name, 'lang:', bestVoice.lang);
+        console.log('[AudioPlayer] ✓ Selected voice:', bestVoice.name, '| lang:', bestVoice.lang);
         setSelectedVoice(bestVoice.name);
       }
     };
