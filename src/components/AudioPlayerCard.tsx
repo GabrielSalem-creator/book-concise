@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, StopCircle, Volume2, Loader2, Settings2 } from 'lucide-react';
+import { Play, Pause, StopCircle, Volume2, Loader2, Settings2, SkipBack, SkipForward } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,6 +12,7 @@ interface AudioPlayerCardProps {
   onProgress?: (progress: number) => void;
   onComplete?: () => void;
   readingSessionId?: string | null;
+  initialProgress?: number;
 }
 
 const SPEED_OPTIONS = [
@@ -28,13 +29,14 @@ export default function AudioPlayerCard({
   summary,
   onProgress,
   onComplete,
+  initialProgress = 0,
 }: AudioPlayerCardProps) {
   const { toast } = useToast();
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState(initialProgress);
   const [playbackRate, setPlaybackRate] = useState('1');
   const [selectedVoice, setSelectedVoice] = useState('');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -43,6 +45,7 @@ export default function AudioPlayerCard({
   const startTimeRef = useRef<number>(0);
   const progressIntervalRef = useRef<number | null>(null);
   const isMountedRef = useRef(true);
+  const seekTargetRef = useRef<number | null>(null);
 
   // Load voices on mount
   useEffect(() => {
@@ -67,7 +70,6 @@ export default function AudioPlayerCard({
         setVoices(voicePool);
 
         if (!selectedVoice) {
-          // Priority order: Google US English > Google UK English Female > Samantha > any Google > first English
           const priorities = [
             (v: SpeechSynthesisVoice) => v.name === 'Google US English',
             (v: SpeechSynthesisVoice) => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('female'),
@@ -112,72 +114,42 @@ export default function AudioPlayerCard({
     utteranceRef.current = null;
   }, []);
 
-  // Estimate duration: ~150 words per minute
   const estimateDuration = (text: string, rate: number): number => {
     const words = text.split(/\s+/).length;
     return (words / 150 / rate) * 60 * 1000;
   };
 
-  const handlePlay = useCallback(() => {
-    if (!('speechSynthesis' in window)) {
-      toast({
-        title: 'Not Supported',
-        description: 'Text-to-speech is not supported in this browser',
-        variant: 'destructive',
-      });
-      return;
-    }
+  // Play from a specific progress percentage
+  const playFromPosition = useCallback((fromProgress: number) => {
+    if (!('speechSynthesis' in window) || !summary) return;
 
-    if (!summary) {
-      toast({
-        title: 'No Content',
-        description: 'No summary to read',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Resume if paused
-    if (isPaused) {
-      window.speechSynthesis.resume();
-      setIsPlaying(true);
-      setIsPaused(false);
-      
-      // Restart progress tracking
-      const rate = parseFloat(playbackRate);
-      const estimatedDuration = estimateDuration(summary, rate);
-      startTimeRef.current = Date.now() - (progress / 100) * estimatedDuration;
-      
-      progressIntervalRef.current = window.setInterval(() => {
-        if (!isMountedRef.current) return;
-        const elapsed = Date.now() - startTimeRef.current;
-        const currentProgress = Math.min((elapsed / estimatedDuration) * 100, 99);
-        setProgress(currentProgress);
-        onProgress?.(currentProgress);
-      }, 500);
-      return;
-    }
-
-    // Start fresh
     cleanup();
     setIsLoading(true);
-    setProgress(0);
 
-    const utterance = new SpeechSynthesisUtterance(summary);
+    // Calculate character offset from progress
+    const charOffset = Math.floor((fromProgress / 100) * summary.length);
+    const textToSpeak = summary.substring(charOffset);
+
+    if (textToSpeak.trim().length === 0) {
+      setProgress(100);
+      onComplete?.();
+      setIsLoading(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
     utteranceRef.current = utterance;
 
-    // Set voice
     const voice = voices.find(v => v.name === selectedVoice);
-    if (voice) {
-      utterance.voice = voice;
-    }
+    if (voice) utterance.voice = voice;
 
     utterance.rate = parseFloat(playbackRate);
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
 
     const rate = parseFloat(playbackRate);
-    const estimatedDuration = estimateDuration(summary, rate);
+    const fullDuration = estimateDuration(summary, rate);
+    const remainingDuration = fullDuration * ((100 - fromProgress) / 100);
 
     utterance.onstart = () => {
       if (!isMountedRef.current) return;
@@ -189,7 +161,7 @@ export default function AudioPlayerCard({
       progressIntervalRef.current = window.setInterval(() => {
         if (!isMountedRef.current) return;
         const elapsed = Date.now() - startTimeRef.current;
-        const currentProgress = Math.min((elapsed / estimatedDuration) * 100, 99);
+        const currentProgress = Math.min(fromProgress + ((elapsed / remainingDuration) * (100 - fromProgress)), 99);
         setProgress(currentProgress);
         onProgress?.(currentProgress);
       }, 500);
@@ -227,7 +199,41 @@ export default function AudioPlayerCard({
     };
 
     window.speechSynthesis.speak(utterance);
-  }, [summary, selectedVoice, voices, playbackRate, isPaused, progress, onProgress, onComplete, toast, cleanup]);
+  }, [summary, selectedVoice, voices, playbackRate, onProgress, onComplete, toast, cleanup]);
+
+  const handlePlay = useCallback(() => {
+    if (!('speechSynthesis' in window)) {
+      toast({ title: 'Not Supported', description: 'Text-to-speech is not supported in this browser', variant: 'destructive' });
+      return;
+    }
+    if (!summary) {
+      toast({ title: 'No Content', description: 'No summary to read', variant: 'destructive' });
+      return;
+    }
+
+    // Resume if paused
+    if (isPaused) {
+      window.speechSynthesis.resume();
+      setIsPlaying(true);
+      setIsPaused(false);
+      
+      const rate = parseFloat(playbackRate);
+      const estimatedDuration = estimateDuration(summary, rate);
+      startTimeRef.current = Date.now() - (progress / 100) * estimatedDuration;
+      
+      progressIntervalRef.current = window.setInterval(() => {
+        if (!isMountedRef.current) return;
+        const elapsed = Date.now() - startTimeRef.current;
+        const currentProgress = Math.min((elapsed / estimatedDuration) * 100, 99);
+        setProgress(currentProgress);
+        onProgress?.(currentProgress);
+      }, 500);
+      return;
+    }
+
+    // Start from current progress position (supports resume from saved position)
+    playFromPosition(progress > 0 && progress < 100 ? progress : 0);
+  }, [summary, selectedVoice, voices, playbackRate, isPaused, progress, onProgress, onComplete, toast, cleanup, playFromPosition]);
 
   const handlePause = useCallback(() => {
     if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
@@ -246,12 +252,36 @@ export default function AudioPlayerCard({
     setIsPlaying(false);
     setIsPaused(false);
     setProgress(0);
-  }, [cleanup]);
+    onProgress?.(0);
+  }, [cleanup, onProgress]);
+
+  const handleSeek = useCallback((value: number[]) => {
+    const seekTo = value[0];
+    setProgress(seekTo);
+    onProgress?.(seekTo);
+
+    // If currently playing, restart from new position
+    if (isPlaying || isPaused) {
+      playFromPosition(seekTo);
+    }
+  }, [isPlaying, isPaused, playFromPosition, onProgress]);
+
+  const handleSkip = useCallback((seconds: number) => {
+    const rate = parseFloat(playbackRate);
+    const fullDuration = estimateDuration(summary, rate);
+    const skipPercent = (seconds * 1000 / fullDuration) * 100;
+    const newProgress = Math.max(0, Math.min(99, progress + skipPercent));
+    
+    setProgress(newProgress);
+    onProgress?.(newProgress);
+
+    if (isPlaying || isPaused) {
+      playFromPosition(newProgress);
+    }
+  }, [progress, playbackRate, summary, isPlaying, isPaused, playFromPosition, onProgress]);
 
   const handleSpeedChange = useCallback((speed: string) => {
     setPlaybackRate(speed);
-    // Note: Web Speech API doesn't allow changing rate mid-speech
-    // User needs to restart to apply new rate
   }, []);
 
   return (
@@ -302,15 +332,27 @@ export default function AudioPlayerCard({
           <Slider
             value={[progress]}
             max={100}
-            step={1}
+            step={0.5}
             className="w-full cursor-pointer"
-            disabled
+            onValueCommit={handleSeek}
           />
         </div>
       </div>
 
       {/* Main Controls */}
       <div className="flex items-center justify-center gap-3">
+        {/* Skip Back */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => handleSkip(-10)}
+          disabled={isLoading || progress <= 0}
+          className="h-10 w-10 rounded-full hover:bg-primary/10"
+          aria-label="Skip back 10 seconds"
+        >
+          <SkipBack className="w-5 h-5" />
+        </Button>
+
         {isLoading ? (
           <Button
             size="lg"
@@ -337,9 +379,21 @@ export default function AudioPlayerCard({
             className="gap-3 bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 px-8 h-14 rounded-full shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 min-w-[160px]"
           >
             <Play className="w-6 h-6 fill-current" />
-            <span className="text-lg font-semibold">{isPaused ? 'Resume' : 'Play'}</span>
+            <span className="text-lg font-semibold">{isPaused || progress > 0 ? 'Resume' : 'Play'}</span>
           </Button>
         )}
+
+        {/* Skip Forward */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => handleSkip(10)}
+          disabled={isLoading || progress >= 99}
+          className="h-10 w-10 rounded-full hover:bg-primary/10"
+          aria-label="Skip forward 10 seconds"
+        >
+          <SkipForward className="w-5 h-5" />
+        </Button>
 
         {(isPlaying || isPaused || progress > 0) && progress < 100 && (
           <Button
@@ -353,7 +407,6 @@ export default function AudioPlayerCard({
         )}
       </div>
 
-      {/* Browser support note */}
       {!('speechSynthesis' in window) && (
         <p className="text-xs text-center text-destructive">
           Text-to-speech is not supported in this browser
