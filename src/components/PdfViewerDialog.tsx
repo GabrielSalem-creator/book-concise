@@ -81,8 +81,8 @@ const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author }: PdfViewerDi
     setIsFullscreen(!isFullscreen);
   };
 
-  // Google Docs PDF Viewer URL for better compatibility
-  const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(pdfUrl)}&embedded=true`;
+  // Use the direct PDF URL for the iframe viewer
+  const viewerUrl = pdfUrl;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

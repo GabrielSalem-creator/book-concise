@@ -656,7 +656,7 @@ const ReadBook = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
       {/* Top spacing */}
-      <div className="h-5 bg-background" />
+      <div className="h-10 bg-background" />
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-4xl">
         <div className="space-y-4 sm:space-y-6">
           {/* Header */}

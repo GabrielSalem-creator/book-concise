@@ -76,6 +76,10 @@ All colors MUST be HSL.
     -moz-osx-font-smoothing: grayscale;
   }
 
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
   .glass-morphism {
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(20px);
