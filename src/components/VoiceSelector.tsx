@@ -9,10 +9,11 @@ interface VoiceSelectorProps {
   disabled?: boolean;
 }
 
-// Define our 2 preferred voice options
+// Define our 2 preferred voice options with priority-ordered keywords
+// Google voices are highest quality, then Apple (Samantha/Daniel), then Microsoft (Zira/David)
 const PREFERRED_VOICES = [
-  { id: "female", label: "Sara", keywords: ["female", "samantha", "karen", "google us english", "zira", "sara"] },
-  { id: "male", label: "James", keywords: ["male", "daniel", "alex", "google uk english male", "david", "james"] },
+  { id: "female", label: "Sara", keywords: ["google us english", "google uk english female", "samantha", "karen", "victoria", "zira", "sara", "female"] },
+  { id: "male", label: "James", keywords: ["google uk english male", "google us english male", "daniel", "alex", "tom", "david", "james", "male"] },
 ];
 
 export const VoiceSelector = ({
@@ -60,19 +61,11 @@ export const VoiceSelector = ({
     const pref = PREFERRED_VOICES.find(v => v.id === type);
     if (!pref) return voiceList[0];
 
-    // Try to find a Google voice first (highest quality)
-    const googleVoice = voiceList.find(v => {
-      const name = v.name.toLowerCase();
-      return name.includes('google') && pref.keywords.some(k => name.includes(k));
-    });
-    if (googleVoice) return googleVoice;
-
-    // Fall back to any matching voice
-    const anyMatch = voiceList.find(v => {
-      const name = v.name.toLowerCase();
-      return pref.keywords.some(k => name.includes(k));
-    });
-    if (anyMatch) return anyMatch;
+    // Search keywords in priority order - first match wins (Google first, then premium system voices)
+    for (const keyword of pref.keywords) {
+      const match = voiceList.find(v => v.name.toLowerCase().includes(keyword));
+      if (match) return match;
+    }
 
     // Ultimate fallback: first or second voice based on type
     return type === "female" ? voiceList[0] : voiceList[1] || voiceList[0];

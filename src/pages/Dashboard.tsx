@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { useIsMobile } from "@/hooks/use-mobile";
+import MobileBottomNav from "@/components/MobileBottomNav";
 
 const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -337,7 +338,7 @@ const Dashboard = () => {
       </a>
 
       {/* Top spacing */}
-      <div className="h-5 bg-background" />
+      <div className="h-10 bg-background" />
 
       {/* Header with Stats */}
       <header className="sticky top-0 z-50 glass-morphism border-b border-primary/20" role="banner">
@@ -633,6 +634,12 @@ const Dashboard = () => {
 
       {/* Feedback Popup - Collect user feedback */}
       {user && <FeedbackPopup userId={user.id} />}
+
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav />
+
+      {/* Bottom padding for mobile nav */}
+      {isMobile && <div className="h-16" />}
     </div>
   );
 };

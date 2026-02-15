@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import MobileBottomNav from "@/components/MobileBottomNav";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
@@ -16,6 +18,7 @@ interface Message {
 }
 
 const Chat = () => {
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -160,7 +163,7 @@ const Chat = () => {
       </a>
 
       {/* Top spacing */}
-      <div className="h-5 bg-background" />
+      <div className="h-10 bg-background" />
 
       {/* Header */}
       <header className="sticky top-0 z-50 glass-morphism border-b border-primary/20" role="banner">
@@ -340,6 +343,8 @@ const Chat = () => {
           </div>
         </Card>
       </main>
+      <MobileBottomNav />
+      {isMobile && <div className="h-16" />}
     </div>
   );
 };
