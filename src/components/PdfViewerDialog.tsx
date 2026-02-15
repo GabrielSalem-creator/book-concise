@@ -14,9 +14,10 @@ interface PdfViewerDialogProps {
   pdfUrl: string;
   title: string;
   author?: string;
+  isEmbed?: boolean;
 }
 
-const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author }: PdfViewerDialogProps) => {
+const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author, isEmbed }: PdfViewerDialogProps) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
@@ -194,14 +195,15 @@ const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author }: PdfViewerDi
           <iframe
             src={viewerUrl}
             className="w-full h-full border-0"
-            style={{
+            style={isEmbed ? undefined : {
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
               transformOrigin: 'center center',
             }}
-            title={`PDF: ${title}`}
+            title={`Book: ${title}`}
             onLoad={() => setIsLoading(false)}
             allow="autoplay"
             sandbox="allow-scripts allow-same-origin allow-popups"
+            referrerPolicy="no-referrer"
           />
         </div>
 
