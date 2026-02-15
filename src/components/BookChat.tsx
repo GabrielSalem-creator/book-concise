@@ -102,7 +102,7 @@ const BookChat = ({ bookId, bookTitle, bookAuthor, summary }: BookChatProps) => 
       {/* Floating Chat Button */}
       <Button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-2xl transition-all duration-300 ${
+        className={`fixed bottom-24 sm:bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-2xl transition-all duration-300 ${
           isOpen 
             ? 'bg-muted hover:bg-muted/80 rotate-90' 
             : 'bg-gradient-to-r from-primary via-accent to-secondary hover:opacity-90 hover:scale-110'
@@ -119,7 +119,7 @@ const BookChat = ({ bookId, bookTitle, bookAuthor, summary }: BookChatProps) => 
 
       {/* Chat Panel */}
       <div
-        className={`fixed bottom-24 right-6 z-50 w-[calc(100vw-3rem)] sm:w-[400px] transition-all duration-300 ease-out ${
+        className={`fixed bottom-[7.5rem] sm:bottom-24 right-6 z-50 w-[calc(100vw-3rem)] sm:w-[400px] transition-all duration-300 ease-out ${
           isOpen
             ? 'opacity-100 translate-y-0 pointer-events-auto'
             : 'opacity-0 translate-y-8 pointer-events-none'
