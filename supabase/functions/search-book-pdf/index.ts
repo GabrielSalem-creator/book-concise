@@ -81,7 +81,6 @@ serve(async (req) => {
 
     // Collect all URLs from various response shapes
     const allUrls: string[] = [];
-    const pdfUrls: string[] = [];
 
     if (Array.isArray(result)) {
       for (const item of result) {
