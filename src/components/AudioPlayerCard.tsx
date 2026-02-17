@@ -11,6 +11,7 @@ interface AudioPlayerCardProps {
   summary: string;
   onProgress?: (progress: number) => void;
   onComplete?: () => void;
+  onPlayingChange?: (playing: boolean) => void;
   readingSessionId?: string | null;
   initialProgress?: number;
 }
@@ -29,6 +30,7 @@ export default function AudioPlayerCard({
   summary,
   onProgress,
   onComplete,
+  onPlayingChange,
   initialProgress = 0,
 }: AudioPlayerCardProps) {
   const { toast } = useToast();
@@ -45,6 +47,7 @@ export default function AudioPlayerCard({
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const startTimeRef = useRef<number>(0);
   const progressIntervalRef = useRef<number | null>(null);
+  const keepAliveIntervalRef = useRef<number | null>(null);
   const isMountedRef = useRef(true);
   const seekTargetRef = useRef<number | null>(null);
 
@@ -200,6 +203,10 @@ export default function AudioPlayerCard({
       clearInterval(progressIntervalRef.current);
       progressIntervalRef.current = null;
     }
+    if (keepAliveIntervalRef.current) {
+      clearInterval(keepAliveIntervalRef.current);
+      keepAliveIntervalRef.current = null;
+    }
     utteranceRef.current = null;
   }, []);
 
@@ -245,7 +252,16 @@ export default function AudioPlayerCard({
       setIsLoading(false);
       setIsPlaying(true);
       setIsPaused(false);
+      onPlayingChange?.(true);
       startTimeRef.current = Date.now();
+
+      // Chrome workaround: pause/resume every 10s to prevent cutoff
+      keepAliveIntervalRef.current = window.setInterval(() => {
+        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
+      }, 10000);
 
       progressIntervalRef.current = window.setInterval(() => {
         if (!isMountedRef.current) return;
@@ -261,9 +277,14 @@ export default function AudioPlayerCard({
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
       }
+      if (keepAliveIntervalRef.current) {
+        clearInterval(keepAliveIntervalRef.current);
+        keepAliveIntervalRef.current = null;
+      }
       if (!isMountedRef.current) return;
       setIsPlaying(false);
       setIsPaused(false);
+      onPlayingChange?.(false);
       setProgress(100);
       onComplete?.();
     };
@@ -274,14 +295,19 @@ export default function AudioPlayerCard({
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
       }
+      if (keepAliveIntervalRef.current) {
+        clearInterval(keepAliveIntervalRef.current);
+        keepAliveIntervalRef.current = null;
+      }
       if (!isMountedRef.current) return;
       setIsLoading(false);
       setIsPlaying(false);
+      onPlayingChange?.(false);
       
       if (event.error !== 'interrupted') {
         toast({
           title: 'Speech Error',
-          description: 'Failed to play audio',
+          description: 'Failed to play audio. Try a different voice or browser.',
           variant: 'destructive',
         });
       }
@@ -305,6 +331,7 @@ export default function AudioPlayerCard({
       window.speechSynthesis.resume();
       setIsPlaying(true);
       setIsPaused(false);
+      onPlayingChange?.(true);
       
       const rate = parseFloat(playbackRate);
       const estimatedDuration = estimateDuration(summary, rate);
@@ -329,20 +356,26 @@ export default function AudioPlayerCard({
       window.speechSynthesis.pause();
       setIsPlaying(false);
       setIsPaused(true);
+      onPlayingChange?.(false);
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
       }
+      if (keepAliveIntervalRef.current) {
+        clearInterval(keepAliveIntervalRef.current);
+        keepAliveIntervalRef.current = null;
+      }
     }
-  }, []);
+  }, [onPlayingChange]);
 
   const handleStop = useCallback(() => {
     cleanup();
     setIsPlaying(false);
     setIsPaused(false);
+    onPlayingChange?.(false);
     setProgress(0);
     onProgress?.(0);
-  }, [cleanup, onProgress]);
+  }, [cleanup, onProgress, onPlayingChange]);
 
   const handleSeek = useCallback((value: number[]) => {
     const seekTo = value[0];

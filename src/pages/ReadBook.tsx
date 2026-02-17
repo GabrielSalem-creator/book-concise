@@ -33,6 +33,7 @@ const ReadBook = () => {
   const [bookViewUrl, setBookViewUrl] = useState<string | null>(null);
   const [isBookViewEmbed, setIsBookViewEmbed] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
   // Cleanup Web Speech API on unmount
   useEffect(() => {
@@ -765,6 +766,7 @@ const ReadBook = () => {
                 bookId={bookId}
                 summary={summary}
                 initialProgress={progress}
+                onPlayingChange={setIsAudioPlaying}
                 onProgress={async (prog) => {
                   setProgress(prog);
                   if (readingSessionId) {
@@ -832,7 +834,7 @@ const ReadBook = () => {
           {summary && (
             <ReadingModeDisplay
               summary={summary}
-              isPlaying={false}
+              isPlaying={isAudioPlaying}
               progress={progress}
               onToggleMute={() => setIsMuted(!isMuted)}
               isMuted={isMuted}

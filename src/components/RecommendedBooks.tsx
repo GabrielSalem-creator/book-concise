@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookOpen, ChevronRight, Sparkles } from "lucide-react";
+import { ChevronRight, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -11,6 +10,7 @@ interface RecommendedBook {
   author: string;
   description: string;
   theme: string;
+  coverUrl?: string;
 }
 
 const CURATED_BOOKS: RecommendedBook[] = [
@@ -42,14 +42,12 @@ export const RecommendedBooks = ({ userThemes = [] }: RecommendedBooksProps) => 
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Rotate books based on day of year
     const now = new Date();
     const start = new Date(now.getFullYear(), 0, 0);
     const dayOfYear = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
     let pool = CURATED_BOOKS;
     
-    // If user has theme preferences, prioritize those
     if (userThemes.length > 0) {
       const themed = CURATED_BOOKS.filter(b => 
         userThemes.some(t => b.theme.toLowerCase().includes(t.toLowerCase()))
@@ -58,14 +56,34 @@ export const RecommendedBooks = ({ userThemes = [] }: RecommendedBooksProps) => 
       pool = [...themed, ...others];
     }
 
-    // Rotate based on day
     const rotated = [...pool.slice(dayOfYear % pool.length), ...pool.slice(0, dayOfYear % pool.length)];
-    setDisplayBooks(rotated.slice(0, 6));
-    setIsLoading(false);
+    const selected = rotated.slice(0, 6);
+    
+    // Fetch cover images from Open Library
+    const fetchCovers = async () => {
+      const withCovers = await Promise.all(
+        selected.map(async (book) => {
+          try {
+            const query = encodeURIComponent(`${book.title} ${book.author}`);
+            const res = await fetch(`https://openlibrary.org/search.json?q=${query}&limit=1&fields=cover_i`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.docs?.[0]?.cover_i) {
+                return { ...book, coverUrl: `https://covers.openlibrary.org/b/id/${data.docs[0].cover_i}-M.jpg` };
+              }
+            }
+          } catch { /* ignore */ }
+          return book;
+        })
+      );
+      setDisplayBooks(withCovers);
+      setIsLoading(false);
+    };
+
+    fetchCovers();
   }, [userThemes]);
 
   const handleBookClick = async (book: RecommendedBook) => {
-    // Check if the book exists in DB
     const { data: existingBook } = await supabase
       .from('books')
       .select('id, summaries(id)')
@@ -75,7 +93,6 @@ export const RecommendedBooks = ({ userThemes = [] }: RecommendedBooksProps) => 
     if (existingBook) {
       navigate(`/read/${existingBook.id}`);
     } else {
-      // Create the book and navigate
       const { data: newBook } = await supabase
         .from('books')
         .insert({ title: book.title, author: book.author, description: book.description })
@@ -93,7 +110,7 @@ export const RecommendedBooks = ({ userThemes = [] }: RecommendedBooksProps) => 
       <div className="space-y-3">
         <Skeleton className="h-6 w-48" />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 rounded-xl" />)}
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-44 rounded-xl" />)}
         </div>
       </div>
     );
@@ -113,19 +130,36 @@ export const RecommendedBooks = ({ userThemes = [] }: RecommendedBooksProps) => 
           <Card
             key={`${book.title}-${i}`}
             onClick={() => handleBookClick(book)}
-            className="p-3 sm:p-4 cursor-pointer hover:shadow-lg hover:border-primary/40 transition-all group bg-card/50 backdrop-blur-sm border border-border/50"
+            className="cursor-pointer hover:shadow-lg hover:border-primary/40 transition-all group bg-card/50 backdrop-blur-sm border border-border/50 overflow-hidden"
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium">
-                {book.theme}
-              </span>
-              <ChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-primary transition-colors" />
+            {/* Cover image */}
+            {book.coverUrl ? (
+              <div className="w-full h-28 sm:h-36 bg-muted/30 overflow-hidden">
+                <img
+                  src={book.coverUrl}
+                  alt={`Cover of ${book.title}`}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  loading="lazy"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              </div>
+            ) : (
+              <div className="w-full h-28 sm:h-36 bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center">
+                <span className="text-3xl opacity-40">📖</span>
+              </div>
+            )}
+            <div className="p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium">
+                  {book.theme}
+                </span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-primary transition-colors" />
+              </div>
+              <h3 className="text-sm font-semibold leading-tight mb-0.5 line-clamp-2 group-hover:text-primary transition-colors">
+                {book.title}
+              </h3>
+              <p className="text-[10px] text-muted-foreground">{book.author}</p>
             </div>
-            <h3 className="text-sm font-semibold leading-tight mb-1 line-clamp-2 group-hover:text-primary transition-colors">
-              {book.title}
-            </h3>
-            <p className="text-[10px] text-muted-foreground mb-1">{book.author}</p>
-            <p className="text-[10px] text-muted-foreground/70 line-clamp-2">{book.description}</p>
           </Card>
         ))}
       </div>
