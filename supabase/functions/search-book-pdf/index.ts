@@ -107,14 +107,21 @@ serve(async (req) => {
       }
     }
 
-    // Filter for PDF URLs - check .pdf extension or /pdf/ in path
+    // Filter for PDF URLs - prioritize exact .pdf extension
+    const exactPdfUrls: string[] = [];
+    const loosePdfUrls: string[] = [];
+    
     for (const url of allUrls) {
       const lower = url.toLowerCase();
-      const isPdf = lower.endsWith('.pdf') || lower.includes('.pdf?') || lower.includes('/pdf/') || lower.includes('pdf_url');
-      if (isPdf && !pdfUrls.includes(url)) {
-        pdfUrls.push(url);
+      if (lower.endsWith('.pdf') || lower.match(/\.pdf\?/)) {
+        exactPdfUrls.push(url);
+      } else if (lower.includes('/pdf/') || lower.includes('pdf_url')) {
+        loosePdfUrls.push(url);
       }
     }
+    
+    // Prioritize exact .pdf URLs first, then loose matches
+    const pdfUrls = [...new Set([...exactPdfUrls, ...loosePdfUrls])];
 
     // If no direct PDF links found, return all URLs so the caller can try them
     const urlsToReturn = pdfUrls.length > 0 ? pdfUrls : allUrls.filter((u, i, a) => a.indexOf(u) === i);

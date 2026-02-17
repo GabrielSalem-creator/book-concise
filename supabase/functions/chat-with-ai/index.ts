@@ -9,6 +9,31 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
+// Background function to fetch book cover image from Open Library API
+async function fetchBookCover(supabase: any, bookId: string, title: string, author: string) {
+  try {
+    // Try Open Library search for cover
+    const query = encodeURIComponent(`${title} ${author}`);
+    const response = await fetch(`https://openlibrary.org/search.json?q=${query}&limit=1&fields=cover_i,title`);
+    if (!response.ok) return;
+    
+    const data = await response.json();
+    if (data.docs?.[0]?.cover_i) {
+      const coverId = data.docs[0].cover_i;
+      const coverUrl = `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`;
+      
+      await supabase
+        .from('books')
+        .update({ cover_image_url: coverUrl })
+        .eq('id', bookId);
+      
+      console.log(`[chat] Cover image saved for: ${title}`);
+    }
+  } catch (error) {
+    console.error(`[chat] Failed to fetch cover for ${title}:`, error);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -59,43 +84,30 @@ serve(async (req) => {
     // Count conversation turns to understand where we are
     const userTurns = fullHistory.filter((m: any) => m.role === 'user').length;
 
-    const systemPrompt = `You are a world-class reading advisor, literary expert, and personal development coach. You have deep, encyclopedic knowledge of ALL books ever published across every genre — fiction, non-fiction, academic, self-help, business, philosophy, psychology, neuroscience, history, biography, spirituality, technology, health, relationships, and every niche in between. You know classics and hidden gems. You know which books changed industries and which ones are overrated.
+    const systemPrompt = `You are a concise, expert reading advisor. You know ALL published books across every genre.
 
-YOUR CORE MISSION: Help users discover the PERFECT books for their unique situation by deeply understanding their needs through warm, insightful conversation.
+YOUR MISSION: Quickly understand what the user wants and create the perfect reading plan.
 
-CONVERSATION RULES — THIS IS CRITICAL:
-1. DO NOT generate a reading plan immediately. You MUST ask at least 2-3 clarifying questions first across multiple messages.
-2. Each response should be warm, insightful, and 2-4 sentences max (plus your question).
-3. Your questions should progressively explore:
-   - FIRST: What specifically they want to achieve, learn, or how they want to grow
-   - THEN: Their current knowledge/experience level on the topic (beginner, intermediate, advanced)
-   - THEN: Their reading style preferences (practical how-to vs philosophical/narrative, short vs long reads, academic vs conversational tone)
-   - ALSO: What they've already read on this topic (so you can avoid repeating and build on their foundation)
-   - FINALLY: How deep they want to go (quick overview with 2-3 books vs comprehensive mastery with 5-7 books)
-4. Show genuine expertise. Naturally reference specific books, authors, or ideas in your responses to demonstrate your knowledge and build trust.
-5. Be empathetic and curious — treat this like a conversation with a brilliant friend who genuinely cares about their growth.
-6. Pick up on subtle cues in their answers to personalize your follow-up questions.
-7. Once you feel you truly understand their unique needs (after 2-3+ exchanges), THEN create the plan.
+CONVERSATION RULES:
+1. Be CONCISE - max 2-3 sentences per response plus your question.
+2. Ask only 1-2 quick clarifying questions before creating the plan. Don't over-ask.
+3. If the user's goal is clear from the first message, you can create the plan after just 1 exchange.
+4. Questions to consider (pick the most relevant 1-2):
+   - What specifically they want to achieve
+   - Their experience level (beginner/intermediate/advanced)
+   - How many books they want (quick 2-3 or deep 5-7)
+5. Show expertise by naturally referencing relevant books.
+6. Be warm but efficient - respect the user's time.
 
-BOOK SELECTION RULES (WHEN CREATING THE PLAN):
-- Draw from YOUR FULL KNOWLEDGE of all books worldwide — you are NOT limited to any database
-- Pick books that are highly rated, well-regarded, and specifically relevant to the user's stated needs and level
-- Consider timeless classics AND modern gems published recently
-- Each book should serve a DISTINCT purpose in the plan — no redundancy in themes or lessons
-- Include diverse perspectives when appropriate (different authors, cultures, methodologies)
-- The books MUST be real, published books — never invent fictional titles
-- Order books logically: foundational reads first, then progressively more advanced/specific
-- For each book, explain specifically WHY it's perfect for THIS user based on what they shared
+BOOK SELECTION (WHEN CREATING PLAN):
+- Pick highly rated, well-regarded, REAL published books
+- Each book serves a distinct purpose - no redundancy
+- Order: foundational first, then advanced
+- Brief reason for each pick (1 sentence max)
+- 2-7 books based on user preference
 
-WHEN READY TO CREATE PLAN:
-- Briefly summarize what you understood about their needs
-- Explain the logic behind the book order
-- Use the create_reading_plan tool with 2-7 books based on the depth they indicated
-- Add a personal touch — mention what they should pay attention to in each book
+Current turn: ${userTurns}. ${userTurns < 2 ? 'Ask ONE quick clarifying question.' : 'Create the plan now if you have enough info.'}`;
 
-TONE: You're like a brilliant, well-read friend who happens to have read thousands of books and genuinely wants to help. Be conversational, warm, occasionally witty, and never robotic or generic.
-
-Current conversation turn: ${userTurns}. ${userTurns < 3 ? 'You MUST ask a clarifying question — do NOT create a plan yet. Show genuine curiosity.' : 'If you have enough information, you may create the plan. If not, ask another question to refine your understanding.'}`;
     const aiMessages = [
       { role: 'system', content: systemPrompt },
       ...fullHistory
@@ -108,7 +120,7 @@ Current conversation turn: ${userTurns}. ${userTurns < 3 ? 'You MUST ask a clari
     };
 
     // Only provide the tool after enough conversation
-    if (userTurns >= 3) {
+    if (userTurns >= 2) {
       aiBody.tools = [{
         type: 'function',
         function: {
@@ -212,7 +224,7 @@ Current conversation turn: ${userTurns}. ${userTurns < 3 ? 'You MUST ask a clari
       // Check if book exists in DB
       let { data: existingBook } = await supabase
         .from('books')
-        .select('id, title, author, summaries(id)')
+        .select('id, title, author, cover_image_url, summaries(id)')
         .ilike('title', bookInfo.title)
         .maybeSingle();
 
@@ -222,6 +234,11 @@ Current conversation turn: ${userTurns}. ${userTurns < 3 ? 'You MUST ask a clari
         bookId = existingBook.id;
         const hasSummary = existingBook.summaries && existingBook.summaries.length > 0;
         addedBooks.push({ ...bookInfo, hasSummary });
+
+        // Try to fetch cover image if missing
+        if (!existingBook.cover_image_url) {
+          fetchBookCover(supabase, existingBook.id, bookInfo.title, bookInfo.author);
+        }
       } else {
         // Create the book entry
         const { data: newBook } = await supabase
@@ -240,6 +257,9 @@ Current conversation turn: ${userTurns}. ${userTurns < 3 ? 'You MUST ask a clari
         }
         bookId = newBook.id;
         createdBooks.push(bookInfo);
+
+        // Fetch cover image in background
+        fetchBookCover(supabase, newBook.id, bookInfo.title, bookInfo.author);
       }
 
       await supabase.from('reading_plan_books').insert({

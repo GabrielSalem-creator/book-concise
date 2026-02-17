@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
 import { StreakDisplay } from "@/components/StreakDisplay";
+import { RecommendedBooks } from "@/components/RecommendedBooks";
 import { ExitIntentPopup } from "@/components/ExitIntentPopup";
 import { WelcomeBackModal } from "@/components/WelcomeBackModal";
 import { useStreakMilestoneToast } from "@/components/StreakMilestoneToast";
@@ -40,6 +41,8 @@ const Dashboard = () => {
   const [hasReadToday, setHasReadToday] = useState(false);
   const [lastReadDate, setLastReadDate] = useState<Date | null>(null);
   const [userName, setUserName] = useState<string | undefined>();
+  const [userThemes, setUserThemes] = useState<string[]>([]);
+  const [showRecommended, setShowRecommended] = useState(false);
   const [showSearch, setShowSearch] = useState(true);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const lastScrollY = useRef(0);
@@ -207,7 +210,7 @@ const Dashboard = () => {
         }
       }
 
-      // Get user name for personalized messaging
+      // Get user name and themes for personalized messaging
       const { data: profile } = await supabase
         .from('profiles')
         .select('full_name, username')
@@ -217,6 +220,22 @@ const Dashboard = () => {
       if (profile) {
         setUserName(profile.full_name || profile.username || undefined);
       }
+
+      // Get user themes for recommendations
+      const { data: prefs } = await supabase
+        .from('user_preferences')
+        .select('themes')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (prefs?.themes) {
+        setUserThemes(prefs.themes);
+      }
+
+      // Show recommended books when no current reading AND no active reading plan
+      const hasCurrentBook = !!currentSession;
+      const hasActivePlan = !!goal && goal.reading_plan_books?.length > 0;
+      setShowRecommended(!hasCurrentBook && !hasActivePlan);
     } finally {
       setIsLoading(false);
       setHasLoaded(true);
@@ -600,6 +619,11 @@ const Dashboard = () => {
               )}
             </section>
           </div>
+
+          {/* Recommended Books (shown when no active reading/plan) */}
+          {showRecommended && !isLoading && (
+            <RecommendedBooks userThemes={userThemes} />
+          )}
 
           {/* Summary Display (Full Width) */}
           {summary && (
