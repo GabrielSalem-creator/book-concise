@@ -11,6 +11,7 @@ import { useAuth } from "@/components/AuthProvider";
 import BookChat from "@/components/BookChat";
 import PdfViewerDialog from "@/components/PdfViewerDialog";
 import AudioPlayerCard from "@/components/AudioPlayerCard";
+import { ReadingModeDisplay } from "@/components/ReadingModeDisplay";
 
 const ReadBook = () => {
   const isMobile = useIsMobile();
@@ -31,6 +32,7 @@ const ReadBook = () => {
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   const [bookViewUrl, setBookViewUrl] = useState<string | null>(null);
   const [isBookViewEmbed, setIsBookViewEmbed] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   // Cleanup Web Speech API on unmount
   useEffect(() => {
@@ -826,11 +828,22 @@ const ReadBook = () => {
             </div>
           </Card>
 
+          {/* Reading Mode Display - synced text */}
+          {summary && (
+            <ReadingModeDisplay
+              summary={summary}
+              isPlaying={false}
+              progress={progress}
+              onToggleMute={() => setIsMuted(!isMuted)}
+              isMuted={isMuted}
+            />
+          )}
+
           {/* Summary Content */}
           <Card className="glass-morphism p-5 sm:p-6 lg:p-8 border-primary/20">
             <div className="flex items-center gap-2 mb-4 pb-4 border-b border-border/50">
               <FileText className="w-5 h-5 text-primary" />
-              <h2 className="font-semibold text-foreground">Book Summary</h2>
+              <h2 className="font-semibold text-foreground">Full Summary</h2>
             </div>
             <div className="prose prose-sm sm:prose-base lg:prose-lg max-w-none dark:prose-invert">
               <div className="whitespace-pre-wrap leading-relaxed text-foreground/85 text-sm sm:text-base lg:text-lg">
