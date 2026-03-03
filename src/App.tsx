@@ -2,6 +2,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/components/AuthProvider";
+import { usePageVisitTracker } from "@/hooks/usePageVisitTracker";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import Library from "./pages/Library";
@@ -18,12 +19,17 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+const PageTracker = ({ children }: { children: React.ReactNode }) => {
+  usePageVisitTracker();
+  return <>{children}</>;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <AuthProvider>
-        
         <BrowserRouter>
+          <PageTracker>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/landing" element={<Landing />} />
@@ -40,6 +46,7 @@ const App = () => (
             <Route path="/privacy" element={<Privacy />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </PageTracker>
         </BrowserRouter>
       </AuthProvider>
     </TooltipProvider>

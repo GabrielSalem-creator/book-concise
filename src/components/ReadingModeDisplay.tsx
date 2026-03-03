@@ -1,14 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Volume2, VolumeX, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface ReadingModeDisplayProps {
   summary: string;
   isPlaying: boolean;
   progress: number;
-  onToggleMute: () => void;
-  isMuted: boolean;
+  onClose: () => void;
 }
 
 const CHARS_PER_CHUNK = 300;
@@ -17,12 +15,10 @@ export const ReadingModeDisplay = ({
   summary,
   isPlaying,
   progress,
-  onToggleMute,
-  isMuted,
+  onClose,
 }: ReadingModeDisplayProps) => {
   const [chunks, setChunks] = useState<string[]>([]);
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   // Split summary into readable chunks by sentence boundaries
   useEffect(() => {
@@ -45,14 +41,14 @@ export const ReadingModeDisplay = ({
 
   // Sync chunk index with audio progress when playing
   useEffect(() => {
-    if (isPlaying && !isMuted && chunks.length > 0) {
+    if (isPlaying && chunks.length > 0) {
       const idx = Math.min(
         Math.floor((progress / 100) * chunks.length),
         chunks.length - 1
       );
       setCurrentChunkIndex(idx);
     }
-  }, [progress, isPlaying, isMuted, chunks.length]);
+  }, [progress, isPlaying, chunks.length]);
 
   const goNext = useCallback(() => {
     setCurrentChunkIndex(prev => Math.min(prev + 1, chunks.length - 1));
@@ -71,78 +67,71 @@ export const ReadingModeDisplay = ({
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         goPrev();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [goNext, goPrev]);
+  }, [goNext, goPrev, onClose]);
 
   if (chunks.length === 0) return null;
 
   return (
-    <Card className="glass-morphism border-primary/20 overflow-hidden" ref={containerRef}>
-      {/* Mode toggle bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border/30 bg-muted/20">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+    <div className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-md flex flex-col">
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-border/30">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
             Reading Mode
           </span>
-          <span className="text-[10px] text-muted-foreground">
-            {currentChunkIndex + 1}/{chunks.length}
+          <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">
+            {currentChunkIndex + 1} / {chunks.length}
           </span>
         </div>
         <Button
           variant="ghost"
-          size="sm"
-          onClick={onToggleMute}
-          className="h-8 gap-1.5 text-xs"
+          size="icon"
+          onClick={onClose}
+          className="h-9 w-9 rounded-full hover:bg-destructive/10 hover:text-destructive"
         >
-          {isMuted ? (
-            <>
-              <VolumeX className="w-3.5 h-3.5" />
-              <span>Read Only</span>
-            </>
-          ) : (
-            <>
-              <Volume2 className="w-3.5 h-3.5 text-primary" />
-              <span>Listen & Read</span>
-            </>
-          )}
+          <X className="w-5 h-5" />
         </Button>
       </div>
 
-      {/* Large text display */}
-      <div className="relative min-h-[200px] sm:min-h-[260px] flex items-center justify-center p-6 sm:p-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/3 via-transparent to-accent/3 pointer-events-none" />
-        <p className="relative text-lg sm:text-xl lg:text-2xl leading-relaxed text-foreground/90 text-center font-medium max-w-2xl animate-fade-in">
+      {/* Large text display - takes all available space */}
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 lg:p-16">
+        <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl leading-relaxed text-foreground/90 text-center font-medium max-w-4xl animate-fade-in select-text">
           {chunks[currentChunkIndex]}
         </p>
       </div>
 
-      {/* Navigation controls (always visible, but auto-advance when listening) */}
-      <div className="flex items-center justify-between px-4 py-3 border-t border-border/30 bg-muted/10">
+      {/* Navigation controls */}
+      <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-t border-border/30">
         <Button
           variant="ghost"
-          size="sm"
+          size="lg"
           onClick={goPrev}
           disabled={currentChunkIndex === 0}
-          className="gap-1"
+          className="gap-2 h-12 px-6"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-5 h-5" />
           <span className="hidden sm:inline">Previous</span>
         </Button>
 
         {/* Progress dots */}
-        <div className="flex items-center gap-1 max-w-[200px] overflow-hidden">
+        <div className="flex items-center gap-1 max-w-[300px] overflow-hidden">
           {chunks.map((_, i) => (
-            <div
+            <button
               key={i}
-              className={`h-1.5 rounded-full transition-all ${
+              onClick={() => setCurrentChunkIndex(i)}
+              className={`h-2 rounded-full transition-all cursor-pointer hover:opacity-80 ${
                 i === currentChunkIndex
-                  ? "w-4 bg-primary"
+                  ? "w-6 bg-primary"
                   : i < currentChunkIndex
-                  ? "w-1.5 bg-primary/40"
-                  : "w-1.5 bg-muted-foreground/20"
+                  ? "w-2 bg-primary/40"
+                  : "w-2 bg-muted-foreground/20"
               }`}
             />
           ))}
@@ -150,15 +139,15 @@ export const ReadingModeDisplay = ({
 
         <Button
           variant="ghost"
-          size="sm"
+          size="lg"
           onClick={goNext}
           disabled={currentChunkIndex === chunks.length - 1}
-          className="gap-1"
+          className="gap-2 h-12 px-6"
         >
           <span className="hidden sm:inline">Next</span>
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className="w-5 h-5" />
         </Button>
       </div>
-    </Card>
+    </div>
   );
 };
