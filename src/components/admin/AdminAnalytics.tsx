@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   BarChart3, Users, Book, Activity, Download, 
   TrendingUp, Calendar, RefreshCw, ArrowUp, ArrowDown,
-  Clock, Zap, Eye, UserPlus
+  Clock, Zap, Eye, UserPlus, Globe
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -18,7 +18,7 @@ import {
 } from 'recharts';
 
 type TimeFrame = '7d' | '30d' | '90d' | '1y';
-type Metric = 'signups' | 'sessions' | 'books_read' | 'summaries';
+type Metric = 'signups' | 'sessions' | 'books_read' | 'summaries' | 'page_visits';
 type Granularity = 'daily' | 'weekly' | 'monthly';
 
 interface ChartData {
@@ -37,6 +37,7 @@ interface Stats {
   avgSessionDuration: string;
   totalReadingTime: number;
   booksCompletedThisWeek: number;
+  uniquePageVisits: number;
 }
 
 export const AdminAnalytics = () => {
@@ -55,6 +56,7 @@ export const AdminAnalytics = () => {
     avgSessionDuration: '0m',
     totalReadingTime: 0,
     booksCompletedThisWeek: 0,
+    uniquePageVisits: 0,
   });
 
   const getDateRange = () => {
@@ -72,7 +74,6 @@ export const AdminAnalytics = () => {
 
   const loadStats = async () => {
     try {
-      // Get all profile user_ids first for accurate counting
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, created_at');
@@ -80,12 +81,10 @@ export const AdminAnalytics = () => {
       const totalUsers = profiles?.length || 0;
       const existingUserIds = new Set(profiles?.map(p => p.user_id) || []);
 
-      // Total books
       const { count: totalBooks } = await supabase
         .from('books')
         .select('*', { count: 'exact', head: true });
 
-      // Total sessions (only for existing users)
       const { data: allSessions } = await supabase
         .from('user_sessions')
         .select('user_id, started_at, ended_at, is_active, last_seen_at');
@@ -93,18 +92,15 @@ export const AdminAnalytics = () => {
       const validSessions = allSessions?.filter(s => existingUserIds.has(s.user_id)) || [];
       const totalSessions = validSessions.length;
 
-      // Total summaries
       const { count: totalSummaries } = await supabase
         .from('summaries')
         .select('*', { count: 'exact', head: true });
 
-      // Active now - users active in last 5 minutes with existing profiles
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const activeNow = validSessions.filter(s => 
         s.is_active && new Date(s.last_seen_at) >= new Date(fiveMinutesAgo)
       ).length;
 
-      // User growth (last 7 days vs previous 7 days)
       const sevenDaysAgo = subDays(new Date(), 7);
       const fourteenDaysAgo = subDays(new Date(), 14);
       
@@ -115,12 +111,19 @@ export const AdminAnalytics = () => {
 
       const growth = previousUsers ? Math.round(((recentUsers - previousUsers) / previousUsers) * 100) : 0;
 
-      // Books completed this week
       const { count: booksCompletedThisWeek } = await supabase
         .from('reading_sessions')
         .select('*', { count: 'exact', head: true })
         .not('completed_at', 'is', null)
         .gte('completed_at', sevenDaysAgo.toISOString());
+
+      // Unique page visits: count unique user_id + action_type='page_visit' combos
+      const { data: pageVisits } = await supabase
+        .from('user_activity')
+        .select('user_id')
+        .eq('action_type', 'page_visit');
+      
+      const uniqueVisitors = new Set(pageVisits?.map(v => v.user_id) || []);
 
       setStats({
         totalUsers,
@@ -132,6 +135,7 @@ export const AdminAnalytics = () => {
         avgSessionDuration: '12m',
         totalReadingTime: totalSessions * 12,
         booksCompletedThisWeek: booksCompletedThisWeek || 0,
+        uniquePageVisits: uniqueVisitors.size,
       });
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -189,6 +193,15 @@ export const AdminAnalytics = () => {
             .lte('created_at', end.toISOString());
           data = summaries || [];
           break;
+        case 'page_visits':
+          const { data: visits } = await supabase
+            .from('user_activity')
+            .select('created_at, user_id')
+            .eq('action_type', 'page_visit')
+            .gte('created_at', start.toISOString())
+            .lte('created_at', end.toISOString());
+          data = visits || [];
+          break;
       }
 
       const chartData: ChartData[] = intervals.map(intervalStart => {
@@ -211,10 +224,21 @@ export const AdminAnalytics = () => {
             dateFormat = 'MMM d';
         }
 
-        const count = data.filter(item => {
-          const itemDate = new Date(item.created_at);
-          return itemDate >= intervalStart && itemDate < intervalEnd;
-        }).length;
+        let count: number;
+        if (xMetric === 'page_visits') {
+          // Count unique users per interval
+          const intervalItems = data.filter(item => {
+            const itemDate = new Date(item.created_at);
+            return itemDate >= intervalStart && itemDate < intervalEnd;
+          });
+          const uniqueUsers = new Set(intervalItems.map((item: any) => item.user_id));
+          count = uniqueUsers.size;
+        } else {
+          count = data.filter(item => {
+            const itemDate = new Date(item.created_at);
+            return itemDate >= intervalStart && itemDate < intervalEnd;
+          }).length;
+        }
 
         return {
           date: intervalStart.toISOString(),
@@ -245,7 +269,6 @@ export const AdminAnalytics = () => {
       granularity
     ]);
 
-    // Add summary row
     const total = chartData.reduce((sum, d) => sum + d.value, 0);
     rows.push(['---', '---', '---']);
     rows.push(['TOTAL', total.toString(), `${timeFrame} period`]);
@@ -265,12 +288,13 @@ export const AdminAnalytics = () => {
     sessions: 'Login Sessions',
     books_read: 'Books Started',
     summaries: 'Summaries Generated',
+    page_visits: 'Unique Page Visits',
   };
 
   return (
     <div className="space-y-6">
       {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {/* Total Users */}
         <Card className="glass-morphism border-primary/20 hover:border-primary/40 transition-all group">
           <CardContent className="p-4">
@@ -310,6 +334,19 @@ export const AdminAnalytics = () => {
             <div className="mt-3 space-y-1">
               <div className="text-2xl font-bold tracking-tight text-green-600">{stats.activeNow}</div>
               <div className="text-xs text-muted-foreground font-medium">Active Now</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Unique Page Visits */}
+        <Card className="glass-morphism border-violet-500/20 hover:border-violet-500/40 transition-all group">
+          <CardContent className="p-4">
+            <div className="p-2 rounded-xl bg-violet-500/10 w-fit group-hover:bg-violet-500/20 transition-colors">
+              <Globe className="w-5 h-5 text-violet-500" />
+            </div>
+            <div className="mt-3 space-y-1">
+              <div className="text-2xl font-bold tracking-tight">{stats.uniquePageVisits}</div>
+              <div className="text-xs text-muted-foreground font-medium">Unique Visitors</div>
             </div>
           </CardContent>
         </Card>
@@ -371,7 +408,7 @@ export const AdminAnalytics = () => {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Select value={xMetric} onValueChange={(v) => setXMetric(v as Metric)}>
-                <SelectTrigger className="w-[140px] h-9 text-sm">
+                <SelectTrigger className="w-[160px] h-9 text-sm">
                   <SelectValue placeholder="Metric" />
                 </SelectTrigger>
                 <SelectContent>
@@ -379,6 +416,7 @@ export const AdminAnalytics = () => {
                   <SelectItem value="sessions">Sessions</SelectItem>
                   <SelectItem value="books_read">Books Started</SelectItem>
                   <SelectItem value="summaries">Summaries</SelectItem>
+                  <SelectItem value="page_visits">Page Visits</SelectItem>
                 </SelectContent>
               </Select>
 

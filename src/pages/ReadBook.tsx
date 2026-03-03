@@ -32,8 +32,15 @@ const ReadBook = () => {
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   const [bookViewUrl, setBookViewUrl] = useState<string | null>(null);
   const [isBookViewEmbed, setIsBookViewEmbed] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [showReadingMode, setShowReadingMode] = useState(false);
+
+  // Show reading mode when audio starts playing
+  useEffect(() => {
+    if (isAudioPlaying && !showReadingMode) {
+      setShowReadingMode(true);
+    }
+  }, [isAudioPlaying]);
 
   // Cleanup Web Speech API on unmount
   useEffect(() => {
@@ -62,16 +69,12 @@ const ReadBook = () => {
     }
   }, [bookId, user]);
 
-  // Auto-search for PDF when book loads without one
   useEffect(() => {
     if (book && !book.pdf_url && !isSearchingPdf && !isLoading) {
       searchForPdf();
     }
   }, [book?.id, book?.pdf_url, isLoading]);
 
-  // No longer need to trigger audio chunk generation - using Web Speech API now
-
-  // Auto-complete when progress reaches 100%
   useEffect(() => {
     if (progress >= 100 && !hasCompletedRef.current && !isCompleting && readingSessionId) {
       handleBookCompletion();
@@ -314,7 +317,6 @@ const ReadBook = () => {
       setReadingSessionId(data.id);
       setProgress(data.progress_percentage || 0);
     }
-    // Also restore last_position as a number if available
     if (data?.last_position) {
       const savedProgress = parseFloat(data.last_position);
       if (!isNaN(savedProgress) && savedProgress > 0) {
@@ -380,8 +382,8 @@ const ReadBook = () => {
     
     hasCompletedRef.current = true;
     setIsCompleting(true);
+    setShowReadingMode(false);
 
-    // Stop Web Speech if running
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -490,7 +492,6 @@ const ReadBook = () => {
   };
 
   const handleShare = async () => {
-    // Share the PDF link if available
     const pdfUrl = book?.pdf_url;
     
     if (!pdfUrl) {
@@ -502,7 +503,6 @@ const ReadBook = () => {
       return;
     }
 
-    // Use Web Share API if available (mobile/iOS)
     if (navigator.share) {
       try {
         await navigator.share({
@@ -515,9 +515,7 @@ const ReadBook = () => {
           description: "PDF link shared successfully",
         });
       } catch (err: any) {
-        // User cancelled or share failed
         if (err.name !== 'AbortError') {
-          // Fallback to clipboard
           await navigator.clipboard.writeText(pdfUrl);
           toast({
             title: "Copied!",
@@ -526,7 +524,6 @@ const ReadBook = () => {
         }
       }
     } else {
-      // Fallback for desktop - copy PDF link to clipboard
       await navigator.clipboard.writeText(pdfUrl);
       toast({
         title: "Copied!",
@@ -551,7 +548,6 @@ const ReadBook = () => {
     });
 
     try {
-      // Try using fetch with no-cors mode and blob
       const response = await fetch(book.pdf_url, {
         mode: 'cors',
         credentials: 'omit',
@@ -561,7 +557,6 @@ const ReadBook = () => {
         const blob = await response.blob();
         const fileName = `${book.title.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')}.pdf`;
         
-        // Check if Web Share API supports files (iOS/mobile)
         if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'application/pdf' })] })) {
           const file = new File([blob], fileName, { type: 'application/pdf' });
           try {
@@ -576,11 +571,9 @@ const ReadBook = () => {
             return;
           } catch (shareErr: any) {
             if (shareErr.name === 'AbortError') return;
-            // Fall through to anchor download
           }
         }
         
-        // Fallback: Create blob URL and trigger download
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -601,7 +594,6 @@ const ReadBook = () => {
     } catch (error) {
       console.error('Download failed:', error);
       
-      // Final fallback: Direct link with download attribute
       const link = document.createElement('a');
       link.href = book.pdf_url;
       link.download = `${book.title.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')}.pdf`;
@@ -649,14 +641,12 @@ const ReadBook = () => {
           description: `Found ${data.pdfUrls.length} PDF source(s)`,
         });
       } else {
-        // Fallback: Use Google Books embed
         const googleBooksUrl = `https://www.google.com/books?q=${encodeURIComponent(searchQuery)}&btnG=Search+Books`;
         setBookViewUrl(googleBooksUrl);
         setIsBookViewEmbed(true);
       }
     } catch (error) {
       console.error('Error searching for PDF:', error);
-      // Still provide a fallback
       const fallbackQuery = book.author ? `${book.title} ${book.author}` : book.title;
       setBookViewUrl(`https://www.google.com/books?q=${encodeURIComponent(fallbackQuery)}&btnG=Search+Books`);
       setIsBookViewEmbed(true);
@@ -681,6 +671,16 @@ const ReadBook = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
+      {/* Fullscreen Reading Mode */}
+      {showReadingMode && summary && (
+        <ReadingModeDisplay
+          summary={summary}
+          isPlaying={isAudioPlaying}
+          progress={progress}
+          onClose={() => setShowReadingMode(false)}
+        />
+      )}
+
       {/* Top spacing */}
       <div className="h-10 bg-background" />
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-4xl">
@@ -766,7 +766,9 @@ const ReadBook = () => {
                 bookId={bookId}
                 summary={summary}
                 initialProgress={progress}
-                onPlayingChange={setIsAudioPlaying}
+                onPlayingChange={(playing) => {
+                  setIsAudioPlaying(playing);
+                }}
                 onProgress={async (prog) => {
                   setProgress(prog);
                   if (readingSessionId) {
@@ -829,17 +831,6 @@ const ReadBook = () => {
               </div>
             </div>
           </Card>
-
-          {/* Reading Mode Display - synced text */}
-          {summary && (
-            <ReadingModeDisplay
-              summary={summary}
-              isPlaying={isAudioPlaying}
-              progress={progress}
-              onToggleMute={() => setIsMuted(!isMuted)}
-              isMuted={isMuted}
-            />
-          )}
 
           {/* Summary Content */}
           <Card className="glass-morphism p-5 sm:p-6 lg:p-8 border-primary/20">
