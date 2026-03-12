@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { X, Download, ExternalLink, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, Download, ExternalLink, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,42 +19,40 @@ interface PdfViewerDialogProps {
 
 const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author, isEmbed }: PdfViewerDialogProps) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [zoom, setZoom] = useState(100);
-  const [rotation, setRotation] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewerUrl, setViewerUrl] = useState("");
 
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50));
-  const handleRotate = () => setRotation(prev => (prev + 90) % 360);
-  
+  useEffect(() => {
+    if (!pdfUrl) return;
+    
+    if (isEmbed) {
+      // For non-PDF URLs (like Google Books search), use directly
+      setViewerUrl(pdfUrl);
+    } else {
+      // For PDF URLs, use Google Docs viewer to bypass iframe restrictions
+      const encodedUrl = encodeURIComponent(pdfUrl);
+      setViewerUrl(`https://docs.google.com/gview?url=${encodedUrl}&embedded=true`);
+    }
+  }, [pdfUrl, isEmbed]);
+
   const handleDownload = async () => {
     try {
-      const response = await fetch(pdfUrl, {
-        mode: 'cors',
-        credentials: 'omit',
-      });
-      
+      const response = await fetch(pdfUrl, { mode: 'cors', credentials: 'omit' });
       if (response.ok) {
         const blob = await response.blob();
         const fileName = `${title.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')}.pdf`;
         
-        // Use Web Share API for mobile if available
-        if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'application/pdf' })] })) {
-          const file = new File([blob], fileName, { type: 'application/pdf' });
+        if (navigator.canShare?.({ files: [new File([blob], fileName, { type: 'application/pdf' })] })) {
           try {
-            await navigator.share({ files: [file], title: title });
+            await navigator.share({ files: [new File([blob], fileName, { type: 'application/pdf' })], title });
             return;
-          } catch (shareErr: any) {
-            if (shareErr.name === 'AbortError') return;
-          }
+          } catch (e: any) { if (e.name === 'AbortError') return; }
         }
         
-        // Fallback: blob download
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
         link.download = fileName;
-        link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -62,35 +60,16 @@ const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author, isEmbed }: Pd
       } else {
         throw new Error('Fetch failed');
       }
-    } catch (error) {
-      // Final fallback
-      const link = document.createElement('a');
-      link.href = pdfUrl;
-      link.download = `${title.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')}.pdf`;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    } catch {
+      window.open(pdfUrl, '_blank');
     }
   };
-
-  const handleOpenExternal = () => {
-    window.open(pdfUrl, '_blank');
-  };
-
-  const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
-  };
-
-  // Use the direct PDF URL for the iframe viewer
-  const viewerUrl = pdfUrl;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
         className={`${isFullscreen ? 'max-w-[100vw] h-[100vh] m-0 rounded-none' : 'max-w-5xl h-[90vh]'} p-0 gap-0 flex flex-col bg-background/95 backdrop-blur-xl border-primary/20`}
       >
-        {/* Header */}
         <DialogHeader className="px-4 py-3 border-b border-border/50 bg-muted/30 flex-shrink-0">
           <div className="flex items-center justify-between gap-4">
             <div className="flex-1 min-w-0">
@@ -102,86 +81,26 @@ const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author, isEmbed }: Pd
               )}
             </div>
             
-            {/* Controls */}
             <div className="flex items-center gap-1 sm:gap-2">
-              {/* Zoom Controls */}
-              <div className="hidden sm:flex items-center gap-1 bg-muted/50 rounded-lg px-2 py-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleZoomOut}
-                  disabled={zoom <= 50}
-                  className="h-7 w-7"
-                  title="Zoom out"
-                >
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-                <span className="text-xs font-medium min-w-[40px] text-center">{zoom}%</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleZoomIn}
-                  disabled={zoom >= 200}
-                  className="h-7 w-7"
-                  title="Zoom in"
-                >
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleRotate}
-                className="h-8 w-8 hidden sm:flex"
-                title="Rotate"
-              >
-                <RotateCw className="h-4 w-4" />
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleFullscreen}
-                className="h-8 w-8"
-                title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-              >
+              <Button variant="ghost" size="icon" onClick={() => setIsFullscreen(!isFullscreen)} className="h-8 w-8">
                 {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleOpenExternal}
-                className="h-8 w-8"
-                title="Open in new tab"
-              >
+              <Button variant="ghost" size="icon" onClick={() => window.open(pdfUrl, '_blank')} className="h-8 w-8">
                 <ExternalLink className="h-4 w-4" />
               </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownload}
-                className="hidden sm:flex gap-2"
-              >
-                <Download className="h-4 w-4" />
-                Download
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onClose}
-                className="h-8 w-8 ml-1"
-              >
+              {!isEmbed && (
+                <Button variant="outline" size="sm" onClick={handleDownload} className="hidden sm:flex gap-2">
+                  <Download className="h-4 w-4" />
+                  Download
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 ml-1">
                 <X className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </DialogHeader>
 
-        {/* PDF Viewer */}
         <div className="flex-1 relative overflow-hidden bg-muted/20">
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-10">
@@ -195,24 +114,16 @@ const PdfViewerDialog = ({ isOpen, onClose, pdfUrl, title, author, isEmbed }: Pd
           <iframe
             src={viewerUrl}
             className="w-full h-full border-0"
-            style={isEmbed ? undefined : {
-              transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
-              transformOrigin: 'center center',
-            }}
             title={`Book: ${title}`}
             onLoad={() => setIsLoading(false)}
             allow="autoplay"
-            sandbox="allow-scripts allow-same-origin allow-popups"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
             referrerPolicy="no-referrer"
           />
         </div>
 
-        {/* Mobile Download Button */}
         <div className="sm:hidden p-3 border-t border-border/50 bg-muted/30">
-          <Button
-            onClick={handleDownload}
-            className="w-full gap-2"
-          >
+          <Button onClick={handleDownload} className="w-full gap-2">
             <Download className="h-4 w-4" />
             Download PDF
           </Button>
