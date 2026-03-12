@@ -5,7 +5,7 @@ import { useAuth } from '@/components/AuthProvider';
 export const useActivityTracker = () => {
   const { user } = useAuth();
   const sessionIdRef = useRef<string | null>(null);
-  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!user) return;
