@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BookmarkPlus, Share2, ArrowLeft, CheckCircle, Download, FileText, Headphones, Loader2, Eye } from "lucide-react";
+import { BookmarkPlus, Share2, ArrowLeft, CheckCircle, Download, FileText, Headphones, Loader2, Eye, Film, ExternalLink } from "lucide-react";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,9 @@ import BookChat from "@/components/BookChat";
 import PdfViewerDialog from "@/components/PdfViewerDialog";
 import AudioPlayerCard from "@/components/AudioPlayerCard";
 import { ReadingModeDisplay } from "@/components/ReadingModeDisplay";
+import { SummaryDisplay } from "@/components/SummaryDisplay";
+import { DocumentaryPlayer } from "@/components/DocumentaryPlayer";
+import { parseSummaryBullets } from "@/components/SummaryBullets";
 
 const ReadBook = () => {
   const isMobile = useIsMobile();
@@ -34,6 +37,18 @@ const ReadBook = () => {
   const [isBookViewEmbed, setIsBookViewEmbed] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [showReadingMode, setShowReadingMode] = useState(false);
+  const [showDocumentary, setShowDocumentary] = useState(false);
+
+  // Parse bullets from summary (new JSON format) or fall back to plain
+  const bullets = useMemo(() => parseSummaryBullets(summary), [summary]);
+  const plainSummary = useMemo(() => {
+    if (bullets) {
+      return bullets
+        .map((b, i) => `${i + 1}. ${b.concept}. ${b.explanation}${b.example ? ' Example: ' + b.example : ''}`)
+        .join('\n\n');
+    }
+    return summary;
+  }, [bullets, summary]);
 
   // Show reading mode when audio starts playing
   useEffect(() => {
@@ -672,12 +687,22 @@ const ReadBook = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
       {/* Fullscreen Reading Mode */}
-      {showReadingMode && summary && (
+      {showReadingMode && plainSummary && (
         <ReadingModeDisplay
-          summary={summary}
+          summary={plainSummary}
           isPlaying={isAudioPlaying}
           progress={progress}
           onClose={() => setShowReadingMode(false)}
+        />
+      )}
+
+      {/* Fullscreen Documentary */}
+      {showDocumentary && bullets && bookId && (
+        <DocumentaryPlayer
+          bookId={bookId}
+          bookTitle={book.title}
+          bullets={bullets}
+          onClose={() => setShowDocumentary(false)}
         />
       )}
 
@@ -764,7 +789,7 @@ const ReadBook = () => {
             <div className="relative">
               <AudioPlayerCard
                 bookId={bookId}
-                summary={summary}
+                summary={plainSummary}
                 initialProgress={progress}
                 onPlayingChange={(playing) => {
                   setIsAudioPlaying(playing);
@@ -832,18 +857,46 @@ const ReadBook = () => {
             </div>
           </Card>
 
-          {/* Summary Content */}
-          <Card className="glass-morphism p-5 sm:p-6 lg:p-8 border-primary/20">
-            <div className="flex items-center gap-2 mb-4 pb-4 border-b border-border/50">
-              <FileText className="w-5 h-5 text-primary" />
-              <h2 className="font-semibold text-foreground">Full Summary</h2>
-            </div>
-            <div className="prose prose-sm sm:prose-base lg:prose-lg max-w-none dark:prose-invert">
-              <div className="whitespace-pre-wrap leading-relaxed text-foreground/85 text-sm sm:text-base lg:text-lg">
-                {summary || "No summary available for this book."}
+          {/* Documentary launcher */}
+          {bullets && bullets.length > 0 && (
+            <Card className="p-4 sm:p-5 border border-border bg-card">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Film className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-sm sm:text-base">Watch the documentary</h3>
+                    <p className="text-xs text-muted-foreground truncate">
+                      Animated stick-figure scenes — concept by concept
+                    </p>
+                  </div>
+                </div>
+                <Button onClick={() => setShowDocumentary(true)} className="gap-2">
+                  <Film className="w-4 h-4" /> Play
+                </Button>
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
+
+          {/* Source PDF */}
+          {book.pdf_url && (
+            <a
+              href={book.pdf_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/40 p-3 hover:bg-card/70 transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0 text-sm">
+                <ExternalLink className="w-4 h-4 text-primary shrink-0" />
+                <span className="font-medium">Source PDF</span>
+                <span className="text-muted-foreground truncate text-xs">{book.pdf_url}</span>
+              </div>
+            </a>
+          )}
+
+          {/* Summary Content (bullets) */}
+          <SummaryDisplay summary={summary} bookTitle={book.title} bookAuthor={book.author} />
         </div>
       </div>
 
@@ -853,7 +906,7 @@ const ReadBook = () => {
           bookId={bookId || ''}
           bookTitle={book.title}
           bookAuthor={book.author}
-          summary={summary}
+          summary={plainSummary}
         />
       )}
 
