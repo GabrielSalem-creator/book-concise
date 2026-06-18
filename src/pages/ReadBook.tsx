@@ -37,6 +37,18 @@ const ReadBook = () => {
   const [isBookViewEmbed, setIsBookViewEmbed] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [showReadingMode, setShowReadingMode] = useState(false);
+  const [showDocumentary, setShowDocumentary] = useState(false);
+
+  // Parse bullets from summary (new JSON format) or fall back to plain
+  const bullets = useMemo(() => parseSummaryBullets(summary), [summary]);
+  const plainSummary = useMemo(() => {
+    if (bullets) {
+      return bullets
+        .map((b, i) => `${i + 1}. ${b.concept}. ${b.explanation}${b.example ? ' Example: ' + b.example : ''}`)
+        .join('\n\n');
+    }
+    return summary;
+  }, [bullets, summary]);
 
   // Show reading mode when audio starts playing
   useEffect(() => {
