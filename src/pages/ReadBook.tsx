@@ -687,9 +687,9 @@ const ReadBook = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5">
       {/* Fullscreen Reading Mode */}
-      {showReadingMode && summary && (
+      {showReadingMode && plainSummary && (
         <ReadingModeDisplay
-          summary={summary}
+          summary={plainSummary}
           isPlaying={isAudioPlaying}
           progress={progress}
           onClose={() => setShowReadingMode(false)}
@@ -906,7 +906,7 @@ const ReadBook = () => {
           bookId={bookId || ''}
           bookTitle={book.title}
           bookAuthor={book.author}
-          summary={summary}
+          summary={plainSummary}
         />
       )}
 

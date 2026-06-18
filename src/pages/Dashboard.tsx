@@ -6,7 +6,7 @@ import { BookSearch } from "@/components/BookSearch";
 import { SummaryDisplay } from "@/components/SummaryDisplay";
 import { CurrentReading } from "@/components/CurrentReading";
 import { ReadingPlan } from "@/components/ReadingPlan";
-import { ReadingPlanPopup } from "@/components/ReadingPlanPopup";
+// removed popup imports for simpler UX
 import { AccountSettings } from "@/components/AccountSettings";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/hooks/use-toast";
@@ -17,10 +17,8 @@ import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
 import { StreakDisplay } from "@/components/StreakDisplay";
 import { RecommendedBooks } from "@/components/RecommendedBooks";
-import { ExitIntentPopup } from "@/components/ExitIntentPopup";
-import { WelcomeBackModal } from "@/components/WelcomeBackModal";
+// popup imports removed
 import { useStreakMilestoneToast } from "@/components/StreakMilestoneToast";
-import { FeedbackPopup } from "@/components/FeedbackPopup";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
@@ -637,27 +635,7 @@ const Dashboard = () => {
         </div>
       </main>
 
-      {/* Reading Plan Popup for new users */}
-      <ReadingPlanPopup />
-
-      {/* Exit Intent Popup - Urgency when leaving */}
-      <ExitIntentPopup 
-        streak={readingStreak} 
-        hasReadToday={hasReadToday}
-        userName={userName}
-      />
-
-      {/* Welcome Back Modal - Celebrate returns */}
-      <WelcomeBackModal 
-        streak={readingStreak}
-        hasReadToday={hasReadToday}
-        lastReadDate={lastReadDate}
-        userName={userName}
-        booksRead={booksRead}
-      />
-
-      {/* Feedback Popup - Collect user feedback */}
-      {user && <FeedbackPopup userId={user.id} />}
+      {/* Popups removed for a simpler, distraction-free experience */}
 
       {/* Mobile Bottom Navigation */}
       <MobileBottomNav />
