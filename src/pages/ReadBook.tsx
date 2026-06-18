@@ -789,7 +789,7 @@ const ReadBook = () => {
             <div className="relative">
               <AudioPlayerCard
                 bookId={bookId}
-                summary={summary}
+                summary={plainSummary}
                 initialProgress={progress}
                 onPlayingChange={(playing) => {
                   setIsAudioPlaying(playing);
@@ -857,18 +857,46 @@ const ReadBook = () => {
             </div>
           </Card>
 
-          {/* Summary Content */}
-          <Card className="glass-morphism p-5 sm:p-6 lg:p-8 border-primary/20">
-            <div className="flex items-center gap-2 mb-4 pb-4 border-b border-border/50">
-              <FileText className="w-5 h-5 text-primary" />
-              <h2 className="font-semibold text-foreground">Full Summary</h2>
-            </div>
-            <div className="prose prose-sm sm:prose-base lg:prose-lg max-w-none dark:prose-invert">
-              <div className="whitespace-pre-wrap leading-relaxed text-foreground/85 text-sm sm:text-base lg:text-lg">
-                {summary || "No summary available for this book."}
+          {/* Documentary launcher */}
+          {bullets && bullets.length > 0 && (
+            <Card className="p-4 sm:p-5 border border-border bg-card">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Film className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-sm sm:text-base">Watch the documentary</h3>
+                    <p className="text-xs text-muted-foreground truncate">
+                      Animated stick-figure scenes — concept by concept
+                    </p>
+                  </div>
+                </div>
+                <Button onClick={() => setShowDocumentary(true)} className="gap-2">
+                  <Film className="w-4 h-4" /> Play
+                </Button>
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
+
+          {/* Source PDF */}
+          {book.pdf_url && (
+            <a
+              href={book.pdf_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/40 p-3 hover:bg-card/70 transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0 text-sm">
+                <ExternalLink className="w-4 h-4 text-primary shrink-0" />
+                <span className="font-medium">Source PDF</span>
+                <span className="text-muted-foreground truncate text-xs">{book.pdf_url}</span>
+              </div>
+            </a>
+          )}
+
+          {/* Summary Content (bullets) */}
+          <SummaryDisplay summary={summary} bookTitle={book.title} bookAuthor={book.author} />
         </div>
       </div>
 
