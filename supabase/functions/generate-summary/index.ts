@@ -315,33 +315,30 @@ Respond in JSON format only:
     };
     const genreInstruction = genreInstructions[detectedGenre] || genreInstructions['business'];
 
-    // Call AI to generate summary with language, theme, and tone awareness
-    const summaryPrompt = `Generate an exceptionally detailed and engaging summary of the book "${bookTitle}" by ${bookAuthor || 'Unknown'}. 
+    // Generate a STRUCTURED BULLET SUMMARY: array of { concept, explanation, example }
+    const summaryPrompt = `Create a clear, concise structured summary of the book "${bookTitle}" by ${bookAuthor || 'Unknown'}.
 
-CRITICAL REQUIREMENTS:
-- Write the ENTIRE summary in ${languageName} language
-- ${toneInstruction}
-- ${genreInstruction}
+OUTPUT FORMAT — return ONLY valid JSON, no markdown, no commentary:
+{
+  "bullets": [
+    {
+      "concept": "Short concept name (3-7 words, the core idea)",
+      "explanation": "One or two sentences explaining the concept clearly in ${languageName}.",
+      "example": "A concrete example, story, case study, or quote from the book that illustrates it."
+    }
+  ]
+}
 
-Your summary MUST include:
-1. **Core Themes & Main Ideas**: Explain the 3-5 central concepts in depth
-2. **Specific Stories & Examples**: Include at least 2-3 concrete stories, case studies, or examples from the book
-3. **Key Insights**: Highlight breakthrough ideas or memorable moments
-4. **Actionable Takeaways**: Provide 5-7 specific, practical actions or lessons readers can apply
-5. **Context & Background**: Explain why this book matters and its unique contribution
-6. **Memorable Quotes**: Include 2-3 impactful quotes or passages from the book
-7. **Chapter/Section Overview**: Brief overview of major sections
+REQUIREMENTS:
+- Return exactly 6 to 9 bullets covering the book's most important ideas.
+- Write everything in ${languageName} with a ${detectedTone} tone (${genreInstruction}).
+- Each "concept" is punchy and memorable — like a chapter title.
+- Each "explanation" is plain language, 1-2 sentences max. No fluff.
+- Each "example" is SPECIFIC to this book — a real story, person, study, quote, or scene mentioned in it. Never generic.
+- Order the bullets so reading them top-to-bottom tells the book's full arc.
+- Do NOT include markdown, headers, bullet characters, or any text outside the JSON.
 
-Writing Style Requirements:
-- Length: 800-1200 words (comprehensive and detailed)
-- Be SPECIFIC, not general - use actual examples and stories from the book
-- Write in an engaging, ${detectedTone} style appropriate for this ${detectedGenre} book
-- Make it memorable and immersive
-- Include concrete details mentioned in the book
-- Avoid generic statements - every point should be specific to THIS book
-- Remember: The tone should match the book's genre (${detectedGenre})
-
-Make it so detailed and specific that someone reading this summary will remember the book's core elements and can apply its teachings immediately.`;
+The JSON will be parsed programmatically — it must be valid JSON.`;
 
     console.log('[generate-summary] Calling AI API to generate detailed summary...');
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
