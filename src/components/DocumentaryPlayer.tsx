@@ -63,15 +63,41 @@ export const DocumentaryPlayer = ({ bookId, bookTitle, bullets, onClose }: Props
     return () => { cancelled = true; };
   }, [bookId]);
 
+  // Audio playback: try Lovable TTS first, fall back to browser Web Speech
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => {
     if (!playing || muted || loading || !scenes[index]) return;
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(scenes[index].narration);
-    u.rate = 0.95;
-    u.pitch = 1;
-    window.speechSynthesis.speak(u);
-    return () => { window.speechSynthesis.cancel(); };
+    let cancelled = false;
+    const text = scenes[index].narration;
+
+    // Cleanup any prior audio/speech
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('lovable-tts', {
+          body: { text: text.slice(0, 3500), voice: 'alloy' },
+        });
+        if (cancelled) return;
+        if (error || !data?.audioContent) throw new Error(error?.message || 'no audio');
+        const audio = new Audio(`data:${data.mimeType || 'audio/mpeg'};base64,${data.audioContent}`);
+        audioRef.current = audio;
+        await audio.play();
+      } catch {
+        // Fallback to Web Speech
+        if (cancelled || !('speechSynthesis' in window)) return;
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 0.95;
+        window.speechSynthesis.speak(u);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    };
   }, [index, playing, muted, loading, scenes]);
 
   useEffect(() => {
