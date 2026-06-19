@@ -44,19 +44,30 @@ export const SummaryDisplay = ({ summary, bookTitle }: SummaryDisplayProps) => {
     }
   }, [summary]);
 
-  const speak = () => {
-    if (!('speechSynthesis' in window)) return;
+  const speak = async () => {
     if (isReading) {
-      window.speechSynthesis.cancel();
+      window.speechSynthesis?.cancel();
       setIsReading(false);
       return;
     }
-    const u = new SpeechSynthesisUtterance(plainText);
-    u.rate = 0.95;
-    u.onend = () => setIsReading(false);
-    u.onerror = () => setIsReading(false);
-    window.speechSynthesis.speak(u);
     setIsReading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('lovable-tts', {
+        body: { text: plainText.slice(0, 3500), voice: 'alloy' },
+      });
+      if (error || !data?.audioContent) throw new Error('fallback');
+      const audio = new Audio(`data:${data.mimeType || 'audio/mpeg'};base64,${data.audioContent}`);
+      audio.onended = () => setIsReading(false);
+      audio.onerror = () => setIsReading(false);
+      await audio.play();
+    } catch {
+      if (!('speechSynthesis' in window)) { setIsReading(false); return; }
+      const u = new SpeechSynthesisUtterance(plainText);
+      u.rate = 0.95;
+      u.onend = () => setIsReading(false);
+      u.onerror = () => setIsReading(false);
+      window.speechSynthesis.speak(u);
+    }
   };
 
   const bookmark = async () => {
