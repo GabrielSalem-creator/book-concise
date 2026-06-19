@@ -8,37 +8,9 @@ const corsHeaders = {
 };
 
 interface Bullet { concept: string; explanation: string; example?: string }
-interface Scene { imageUrl: string; narration: string; conceptIndex: number; source: 'vercel' | 'lovable' | 'placeholder' }
+interface Scene { imageUrl: string; narration: string; conceptIndex: number; source: 'lovable' | 'placeholder' }
 
-const VERCEL_BASE = "https://simple-generator-five.vercel.app";
-
-async function generateViaVercel(prompt: string): Promise<string | null> {
-  try {
-    await fetch(`${VERCEL_BASE}/?type=architecture`, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-    }).catch(() => {});
-
-    const r = await fetch(`${VERCEL_BASE}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Referer': `${VERCEL_BASE}/?type=architecture`,
-      },
-      body: JSON.stringify({ positivePrompt: prompt, generatorType: 'architecture' }),
-      signal: AbortSignal.timeout(25000),
-    });
-    if (!r.ok) return null;
-    const data = await r.json();
-    const url = data?.imageUrl || data?.url || data?.image;
-    if (!url) return null;
-    return url.startsWith('http') ? url : `${VERCEL_BASE}${url.startsWith('/') ? url : '/' + url}`;
-  } catch (e) {
-    console.warn('[doc] vercel fail:', e);
-    return null;
-  }
-}
+const STYLE = ', minimalist black-and-white stick-figure cinematic storyboard frame, single panel, clean white background, simple line art, documentary illustration, NO text, NO words, NO labels';
 
 async function generateViaLovable(prompt: string, apiKey: string): Promise<string | null> {
   try {
@@ -50,20 +22,29 @@ async function generateViaLovable(prompt: string, apiKey: string): Promise<strin
         messages: [{ role: 'user', content: prompt }],
         modalities: ['image', 'text'],
       }),
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(60000),
     });
     if (!r.ok) {
-      console.warn('[doc] lovable img status', r.status, await r.text().catch(() => ''));
+      console.warn('[doc] lovable img status', r.status, (await r.text().catch(() => '')).slice(0, 200));
       return null;
     }
     const j = await r.json();
     const b64 = j?.data?.[0]?.b64_json;
-    if (!b64) return null;
+    if (!b64) {
+      console.warn('[doc] no b64 in response', JSON.stringify(j).slice(0, 200));
+      return null;
+    }
     return `data:image/png;base64,${b64}`;
   } catch (e) {
     console.warn('[doc] lovable fail:', e);
     return null;
   }
+}
+
+function placeholder(concept: string): string {
+  const safe = concept.replace(/[<>&"]/g, '');
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 400'><rect fill='white' width='600' height='400'/><circle cx='300' cy='160' r='30' fill='none' stroke='black' stroke-width='3'/><line x1='300' y1='190' x2='300' y2='280' stroke='black' stroke-width='3'/><line x1='300' y1='220' x2='260' y2='250' stroke='black' stroke-width='3'/><line x1='300' y1='220' x2='340' y2='250' stroke='black' stroke-width='3'/><line x1='300' y1='280' x2='270' y2='340' stroke='black' stroke-width='3'/><line x1='300' y1='280' x2='330' y2='340' stroke='black' stroke-width='3'/><text x='50%' y='380' font-family='sans-serif' font-size='16' text-anchor='middle' fill='black'>${safe}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 serve(async (req) => {
@@ -90,38 +71,46 @@ serve(async (req) => {
 
     console.log(`[doc] generating ${bullets.length * 2} scenes for "${bookTitle}"`);
 
-    const styleSuffix = ', minimalist black-and-white stick-figure cinematic storyboard frame, single panel, clean white background, simple line art, documentary illustration, no text';
-    const scenes: Scene[] = [];
+    // Build all prompts up-front
+    const tasks: { prompt: string; narration: string; conceptIndex: number; concept: string }[] = [];
+    bullets.forEach((b, i) => {
+      tasks.push({
+        prompt: `Stick figure scene illustrating the concept "${b.concept}". ${b.explanation}.${STYLE}`,
+        narration: `${b.concept}. ${b.explanation}`,
+        conceptIndex: i,
+        concept: b.concept,
+      });
+      tasks.push({
+        prompt: `Stick figure scene showing a concrete example: ${b.example || b.explanation}.${STYLE}`,
+        narration: b.example || b.explanation,
+        conceptIndex: i,
+        concept: b.concept,
+      });
+    });
 
-    for (let i = 0; i < bullets.length; i++) {
-      const b = bullets[i];
-      const promptA = `Stick-figure scene depicting the concept "${b.concept}": ${b.explanation}${styleSuffix}`;
-      const promptB = `Stick-figure scene showing the example: ${b.example || b.explanation}${styleSuffix}`;
-
-      for (const [idx, prompt] of [promptA, promptB].entries()) {
-        let url = await generateViaVercel(prompt);
-        let source: Scene['source'] = 'vercel';
-        if (!url) {
-          url = await generateViaLovable(prompt, apiKey);
-          source = 'lovable';
-        }
-        if (!url) {
-          url = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 400'><rect fill='white' width='600' height='400'/><text x='50%' y='50%' font-family='sans-serif' font-size='20' text-anchor='middle' fill='black'>${b.concept}</text></svg>`)}`;
-          source = 'placeholder';
-        }
-        scenes.push({
-          imageUrl: url,
-          narration: idx === 0 ? `${b.concept}. ${b.explanation}` : (b.example || b.explanation),
-          conceptIndex: i,
-          source,
-        });
+    // Parallelize with a small concurrency cap to avoid rate limits
+    const CONCURRENCY = 4;
+    const scenes: Scene[] = new Array(tasks.length);
+    let cursor = 0;
+    async function worker() {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= tasks.length) return;
+        const t = tasks[idx];
+        let url = await generateViaLovable(t.prompt, apiKey);
+        let source: Scene['source'] = 'lovable';
+        if (!url) { url = placeholder(t.concept); source = 'placeholder'; }
+        scenes[idx] = { imageUrl: url, narration: t.narration, conceptIndex: t.conceptIndex, source };
       }
     }
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
     await supabase.from('book_documentaries').upsert(
       { book_id: bookId, scenes: scenes as any },
       { onConflict: 'book_id' }
     );
+
+    console.log(`[doc] done. lovable=${scenes.filter(s => s.source === 'lovable').length}/${scenes.length}`);
 
     return new Response(JSON.stringify({ success: true, scenes, cached: false }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

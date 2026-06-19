@@ -349,10 +349,12 @@ The JSON will be parsed programmatically — it must be valid JSON.`;
       },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
+        max_tokens: 8000,
+        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
-            content: `You are a professional book analyst who creates exceptionally detailed, specific, and practical summaries. You write in ${languageName} with a ${detectedTone} tone appropriate for ${detectedGenre} books. Focus on concrete stories, examples, and engaging content that matches the book's style.`
+            content: `You are a professional book analyst who creates exceptionally detailed, specific, and practical summaries. You write in ${languageName} with a ${detectedTone} tone appropriate for ${detectedGenre} books. You ALWAYS return strictly valid JSON matching the requested schema, with no extra text, no markdown, no commentary.`
           },
           {
             role: 'user',
